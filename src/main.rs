@@ -4,6 +4,8 @@ use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
 use std::fmt::{self, Display};
+use tigrust::tibber_api::TibberAPI;
+
 // #[macro_use] extern crate rocket;
 
 #[get("/")]
@@ -78,6 +80,7 @@ fn current_time() -> String {
 // chosen runtime
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    let _tapi = TibberAPI::new();
     let _rocket = rocket::build()
         .mount(
             "/",
