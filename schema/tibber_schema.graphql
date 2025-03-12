@@ -1,0 +1,59 @@
+""" taken from developer.tibber.com/docs/reference, not complete """
+type Viewer {
+	login: String
+	userId: String
+	name: String
+	accountType: [String!]!
+	homes: [Home]!
+	home: Home!
+	id: ID!
+	websocketSubscriptionUrl: String
+}
+
+type Home {
+	id: ID!
+	currentSubscription: Subscription
+}
+
+type Subscription {
+	id: ID!
+	""" priceRating could be interesting as well """
+	priceInfo: PriceInfo
+}
+
+type PriceInfo {
+	current: Price
+	today: [Price]!
+	tomorrow: [Price]!
+}
+
+type Price {
+	total: Float
+	energy: Float
+	tax: Float
+	startsAt: String
+	currency: String!
+	level: PriceLevel
+}
+
+""" based on trailng price average, 3 days for hourly values and 30 days for daily values """
+enum PriceLevel {
+	""" 90% < price < 115% """
+	NORMAL
+	""" 60% < price <= 90% """
+	CHEAP
+	""" price <= 60% """
+	VERY_CHEAP
+	""" 115% <= price < 140% """
+	EXPENSIVE
+	""" 140% <= price """
+	VERY_EXPENSIVE
+}
+
+type Query {
+	viewer: Viewer!
+}
+
+schema {
+	query: Query
+}
