@@ -42,10 +42,10 @@ impl<'a> TibberAPI<'a> {
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
         let addr = format!("{}:{}", host, port);
+        dbg!(&addr);
         let stream = TcpStream::connect(addr).await?;
         let tls_stream = self.tls_connector.connect(self.dnsname.to_owned(), stream).await?;
         let io = TokioIo::new(tls_stream);
-        // stuck between these prints
 
         let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
         tokio::task::spawn(async move {
@@ -56,6 +56,10 @@ impl<'a> TibberAPI<'a> {
 
         let variables = get_price_info::Variables {};
         let request_body = GetPriceInfo::build_query(variables);
+        // this is apparently not yet json formatted
+        // take a look at request_body.serialize
+        let query = request_body.query.to_string();
+        dbg!(&query);
 
         let authority = url.authority().unwrap().clone();
         let req = Request::builder()
@@ -66,14 +70,14 @@ impl<'a> TibberAPI<'a> {
                 hyper::header::AUTHORIZATION,
                 format!("Bearer {}", self.api_key),
             )
-            // TODO: figure out how to do this differently
-            .body(request_body.query.to_string())?;
+            .header(hyper::header::CONTENT_TYPE, "application/json")
+            .body(query)?;
         let res = sender.send_request(req).await?;
         let body = res.collect().await?.aggregate();
         println!("body received");
         let mut content = String::new();
         body.reader().read_to_string(&mut content)?;
-        dbg!(&content);
+        dbg!(&content); // syntax error?
         // let prices: Response<GetPriceInfo> = serde_json::from_reader(body.reader())?;
         let serialized: Result<Response<GetPriceInfo>, serde_json::Error> =
             serde_json::from_str(&content);
