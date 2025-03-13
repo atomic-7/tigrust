@@ -56,10 +56,11 @@ impl<'a> FromParam<'a> for Days {
 
 // fn graph_json(day: Days) -> Option<content::RawJson<String>> {
 // need to figure out how to route by accept header
-#[get("/api/prices/<day>", format = "application/json")]
-fn graph_json(day: Days) -> Option<Json<Vec<i32>>> {
-    let prices = vec![
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+#[get("/prices/<day>", format = "application/json")]
+async fn prices(day: Days) -> Option<Json<Vec<f32>>> {
+    let prices: Vec<f32> = vec![
+        0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17., 18., 19.,
+        20., 21., 22., 23.,
     ];
     let _ = dotenv::dotenv();
     
@@ -67,7 +68,8 @@ fn graph_json(day: Days) -> Option<Json<Vec<i32>>> {
     let tapi = TibberAPI::new(key);
     match day {
         Days::TODAY => Some(Json(prices)),
-        Days::TOMORROW => None,
+        // Days::TOMORROW => Some(Json(prices)),
+        Days::TOMORROW => Some(Json(tapi.get_prices().await.unwrap_or(vec![64.]))),
     }
 }
 
