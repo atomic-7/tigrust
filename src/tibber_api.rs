@@ -4,9 +4,11 @@ use hyper::{Request, body::Buf};
 use hyper_util::rt::TokioIo;
 use serde::Deserialize;
 use std::{error::Error, io::Read};
+use std::sync::Arc;
 use tokio::net::TcpStream;
-
-const API_URL: &'static str = "https://api.tibber.com/v1-beta/gql";
+use tokio_rustls::rustls::pki_types::ServerName;
+// use tokio_rustls::rustls::{ClientConfig, RootCertStore};
+use tokio_rustls::TlsConnector;
 
 #[derive(GraphQLQuery, Deserialize, Debug)]
 #[graphql(
@@ -16,22 +18,33 @@ const API_URL: &'static str = "https://api.tibber.com/v1-beta/gql";
 )]
 pub struct GetPriceInfo;
 
-pub struct TibberAPI {
+pub struct TibberAPI<'a> {
     api_key: String,
+    dnsname: ServerName<'a>,
+    tls_connector: TlsConnector,
 }
 
-impl TibberAPI {
+const API_URL: &'static str = "https://api.tibber.com/v1-beta/gql";
+
+impl<'a> TibberAPI<'a> {
     pub fn new(key: String) -> Self {
-        Self { api_key: key }
+        let config = rustls_platform_verifier::tls_config();
+        let connector = TlsConnector::from(Arc::new(config));
+        let dnsname = ServerName::try_from("api.tibber.com").expect("api url should always be valid");
+        Self { 
+            api_key: key,
+            dnsname,
+            tls_connector: connector,
+        }
     }
     pub async fn get_prices(&self) -> Result<Vec<f32>, Box<dyn Error + Send + Sync>> {
         let url: hyper::Uri = API_URL.parse().unwrap();
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
         let addr = format!("{}:{}", host, port);
-        // TODO: use tokio-rustls to make this use https 
         let stream = TcpStream::connect(addr).await?;
-        let io = TokioIo::new(stream);
+        let tls_stream = self.tls_connector.connect(self.dnsname.to_owned(), stream).await?;
+        let io = TokioIo::new(tls_stream);
         // stuck between these prints
 
         let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
