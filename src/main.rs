@@ -85,12 +85,12 @@ fn current_time() -> String {
 // chosen runtime
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
-    let _tapi = TibberAPI::new();
     let _rocket = rocket::build()
         .mount(
             "/",
-            routes![index, delay, graph_json, graph, current_time, store],
+            routes![index, delay, graph, current_time, store],
         )
+        .mount("/api/", routes![prices])
         //.mount("/public", FileServer::from("/www/static"))
         .launch()
         .await?;
