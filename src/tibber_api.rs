@@ -1,22 +1,29 @@
+// use get_price_info::GetPriceInfoViewerHomesCurrentSubscriptionPriceInfoToday;
 use graphql_client::{GraphQLQuery, Response};
+// use graphql_client::GraphQLQuery;
 use http_body_util::BodyExt;
 use hyper::{Request, body::Buf};
 use hyper_util::rt::TokioIo;
-use serde::Deserialize;
+// use serde::Deserialize;
 use std::sync::Arc;
 use std::{error::Error, io::Read};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::pki_types::ServerName;
+// use crate::price_query::get_price_info::GetPriceInfoViewer;
+use crate::price_query::GetPriceInfo;
+use crate::price_query;
 
 // #[derive(GraphQLQuery, Deserialize, Debug)]
-#[derive(GraphQLQuery, Deserialize, Debug)]
-#[graphql(
-    schema_path = "schema/tibber_schema.graphql",
-    query_path = "schema/price_query.graphql",
-    response_derives = "Debug, Deserialize, Serialize"
-)]
-pub struct GetPriceInfo;
+// #[derive(GraphQLQuery, Deserialize, Debug)]
+// #[graphql(
+//     schema_path = "schema/tibber_schema.graphql",
+//     query_path = "schema/price_query.graphql",
+//     response_derives = "Debug, Deserialize, Serialize"
+// )]
+// pub struct GetPriceInfo;
+
+type ApiResult<T> = Result<T, serde_json::Error>;
 
 pub struct TibberAPI<'a> {
     api_key: String,
@@ -59,7 +66,7 @@ impl<'a> TibberAPI<'a> {
             }
         });
 
-        let variables = get_price_info::Variables {};
+        let variables = price_query::get_price_info::Variables {};
         let request_body = GetPriceInfo::build_query(variables);
         let request_body = serde_json::to_string(&request_body)?;
 
@@ -82,24 +89,23 @@ impl<'a> TibberAPI<'a> {
         dbg!(&content);
         // let prices: Respons&content = "{\"data\":{\"viewer\":{\"homes\":[{\"currentSubscription\":{\"priceInfo\":{\"today\":[{\"total\":0.3334,\"e<GetPriceInfo> = serde_json::from_reader(body.reader())?;
         // let serialized : Result<Response<get_price_info::GetPriceInfoViewerHomesCurrentSubscriptionPriceInfo>, serde_json::Error> = serde_json::from_str(&content);
-        let serialized: Result<Response<GetPriceInfo>, serde_json::Error> =
+        let serialized: ApiResult<Response<GetPriceInfo>> =
             serde_json::from_str(&content);
         dbg!(&serialized);
         // let serialized: Result<Response<GetPriceInfo>, serde_json::Error> =
         //     serde_json::from_str(&content);
         println!("deserialized prices");
-        match serialized {
-            Err(e) => {
-                eprintln!(
-                    "failed to deserialize body to Response<GetPriceInfo>: {:?}",
-                    e
-                );
-                return Err(Box::new(e));
-            }
-            Ok(prices) => {
-                dbg!(&prices);
-            }
+        if let Err(e) = serialized {
+            eprintln!("failed to deserialize body {:?}", e);
+            return Err(Box::new(e));
         }
+        let response = serialized.unwrap();
+        dbg!(&response);
+        // if let None = &response.data {
+        //     panic!("no prices");
+        // }
+        // let data = response.data.unwrap();
+        // dbg!(&data);
         Ok(Vec::new())
     }
 }
