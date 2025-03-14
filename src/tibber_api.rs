@@ -1,27 +1,22 @@
-// use get_price_info::GetPriceInfoViewerHomesCurrentSubscriptionPriceInfoToday;
+use crate::Days;
 use graphql_client::{GraphQLQuery, Response};
-// use graphql_client::GraphQLQuery;
 use http_body_util::BodyExt;
 use hyper::{Request, body::Buf};
 use hyper_util::rt::TokioIo;
-// use serde::Deserialize;
+use serde::Deserialize;
 use std::sync::Arc;
 use std::{error::Error, io::Read};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::pki_types::ServerName;
-// use crate::price_query::get_price_info::GetPriceInfoViewer;
-use crate::price_query::GetPriceInfo;
-use crate::price_query;
 
-// #[derive(GraphQLQuery, Deserialize, Debug)]
-// #[derive(GraphQLQuery, Deserialize, Debug)]
-// #[graphql(
-//     schema_path = "schema/tibber_schema.graphql",
-//     query_path = "schema/price_query.graphql",
-//     response_derives = "Debug, Deserialize, Serialize"
-// )]
-// pub struct GetPriceInfo;
+#[derive(GraphQLQuery, Deserialize, Debug)]
+#[graphql(
+    schema_path = "schema/tibber_schema.graphql",
+    query_path = "schema/price_query.graphql",
+    response_derives = "Debug, Deserialize, Serialize"
+)]
+pub struct GetPriceInfo;
 
 type ApiResult<T> = Result<T, serde_json::Error>;
 
@@ -46,7 +41,7 @@ impl<'a> TibberAPI<'a> {
         }
     }
 
-    pub async fn get_prices(&self) -> Result<Vec<f32>, Box<dyn Error + Send + Sync>> {
+    pub async fn get_prices(&self, day: Days) -> Result<Vec<f32>, Box<dyn Error + Send + Sync>> {
         let url: hyper::Uri = API_URL.parse().unwrap();
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
@@ -66,7 +61,7 @@ impl<'a> TibberAPI<'a> {
             }
         });
 
-        let variables = price_query::get_price_info::Variables {};
+        let variables = get_price_info::Variables {};
         let request_body = GetPriceInfo::build_query(variables);
         let request_body = serde_json::to_string(&request_body)?;
 
@@ -87,13 +82,8 @@ impl<'a> TibberAPI<'a> {
         let mut content = String::new();
         body.reader().read_to_string(&mut content)?;
         dbg!(&content);
-        // let prices: Respons&content = "{\"data\":{\"viewer\":{\"homes\":[{\"currentSubscription\":{\"priceInfo\":{\"today\":[{\"total\":0.3334,\"e<GetPriceInfo> = serde_json::from_reader(body.reader())?;
-        // let serialized : Result<Response<get_price_info::GetPriceInfoViewerHomesCurrentSubscriptionPriceInfo>, serde_json::Error> = serde_json::from_str(&content);
-        let serialized: ApiResult<Response<GetPriceInfo>> =
+        let serialized: ApiResult<Response<get_price_info::ResponseData>> =
             serde_json::from_str(&content);
-        dbg!(&serialized);
-        // let serialized: Result<Response<GetPriceInfo>, serde_json::Error> =
-        //     serde_json::from_str(&content);
         println!("deserialized prices");
         if let Err(e) = serialized {
             eprintln!("failed to deserialize body {:?}", e);
@@ -101,11 +91,30 @@ impl<'a> TibberAPI<'a> {
         }
         let response = serialized.unwrap();
         dbg!(&response);
-        // if let None = &response.data {
-        //     panic!("no prices");
-        // }
-        // let data = response.data.unwrap();
-        // dbg!(&data);
-        Ok(Vec::new())
+        let home = response.data.unwrap().viewer.homes;
+        let home = home[0].as_ref().expect("there is always a home");
+        let sub = home
+            .current_subscription.as_ref()
+            .expect("what are we even paying for");
+        let price_info = sub.price_info.as_ref().expect("no price no money");
+        let prices = match day {
+            Days::TODAY => price_info
+                .today
+                .iter()
+                .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
+                .collect(),
+            Days::TOMORROW => {
+                if price_info.tomorrow.is_empty() {
+                    Vec::new()
+                } else {
+                    price_info
+                        .tomorrow
+                        .iter()
+                        .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
+                        .collect()
+                }
+            }
+        };
+        Ok(prices)
     }
 }

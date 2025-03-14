@@ -1,11 +1,10 @@
 use chrono;
 use dotenv;
-use rocket::request::FromParam;
 use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
-use std::fmt::{self, Display};
 use tigrust::tibber_api::TibberAPI;
+use tigrust::Days;
 
 // #[macro_use] extern crate rocket;
 
@@ -27,30 +26,6 @@ fn store(value: i32) -> String {
     format!("stored your number({})!", value)
 }
 
-enum Days {
-    TODAY,
-    TOMORROW,
-}
-
-impl Display for Days {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TODAY => write!(f, "today"),
-            Self::TOMORROW => write!(f, "tomorrow"),
-        }
-    }
-}
-
-impl<'a> FromParam<'a> for Days {
-    type Error = &'a str;
-    fn from_param(param: &'a str) -> Result<Self, Self::Error> {
-        match param {
-            "today" => Ok(Self::TODAY),
-            "tomorrow" => Ok(Self::TOMORROW),
-            _ => Err(param),
-        }
-    }
-}
 
 // TODO: look into bringing in serde directly
 
@@ -58,18 +33,13 @@ impl<'a> FromParam<'a> for Days {
 // need to figure out how to route by accept header
 #[get("/prices/<day>", format = "application/json")]
 async fn prices(day: Days) -> Option<Json<Vec<f32>>> {
-    let prices: Vec<f32> = vec![
-        0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15., 16., 17., 18., 19.,
-        20., 21., 22., 23.,
-    ];
+    // TODO: move this to managed state
     let _ = dotenv::dotenv();
-    
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     let tapi = TibberAPI::new(key);
     match day {
-        Days::TODAY => Some(Json(prices)),
-        // Days::TOMORROW => Some(Json(prices)),
-        Days::TOMORROW => Some(Json(tapi.get_prices().await.unwrap_or(vec![64.]))),
+        Days::TODAY => Some(Json(tapi.get_prices(day).await.unwrap_or(vec![-1.]))),
+        Days::TOMORROW => Some(Json(tapi.get_prices(day).await.unwrap_or(vec![64.]))),
     }
 }
 
