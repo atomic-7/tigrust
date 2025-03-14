@@ -9,6 +9,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::pki_types::ServerName;
 
+// #[derive(GraphQLQuery, Deserialize, Debug)]
 #[derive(GraphQLQuery, Deserialize, Debug)]
 #[graphql(
     schema_path = "schema/tibber_schema.graphql",
@@ -79,9 +80,13 @@ impl<'a> TibberAPI<'a> {
         let mut content = String::new();
         body.reader().read_to_string(&mut content)?;
         dbg!(&content);
-        // let prices: Response<GetPriceInfo> = serde_json::from_reader(body.reader())?;
+        // let prices: Respons&content = "{\"data\":{\"viewer\":{\"homes\":[{\"currentSubscription\":{\"priceInfo\":{\"today\":[{\"total\":0.3334,\"e<GetPriceInfo> = serde_json::from_reader(body.reader())?;
+        // let serialized : Result<Response<get_price_info::GetPriceInfoViewerHomesCurrentSubscriptionPriceInfo>, serde_json::Error> = serde_json::from_str(&content);
         let serialized: Result<Response<GetPriceInfo>, serde_json::Error> =
             serde_json::from_str(&content);
+        dbg!(&serialized);
+        // let serialized: Result<Response<GetPriceInfo>, serde_json::Error> =
+        //     serde_json::from_str(&content);
         println!("deserialized prices");
         match serialized {
             Err(e) => {
@@ -95,7 +100,6 @@ impl<'a> TibberAPI<'a> {
                 dbg!(&prices);
             }
         }
-        // let prices : Response<get_price_info::GetPriceInfoViewerHomesCurrentSubscriptionPriceInfo> = serde_json::from_reader(body.reader())?;
         Ok(Vec::new())
     }
 }
