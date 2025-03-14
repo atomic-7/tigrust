@@ -37,9 +37,12 @@ async fn prices(day: Days) -> Option<Json<Vec<f32>>> {
     let _ = dotenv::dotenv();
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     let tapi = TibberAPI::new(key);
-    match day {
-        Days::TODAY => Some(Json(tapi.get_prices(day).await.unwrap_or(vec![-1.]))),
-        Days::TOMORROW => Some(Json(tapi.get_prices(day).await.unwrap_or(vec![64.]))),
+    match tapi.get_prices(day).await {
+        Err(e) => {
+            eprintln!("failed to get prices: {}", e);
+            None
+        }
+        Ok(prices) => Some(Json(prices))
     }
 }
 

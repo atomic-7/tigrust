@@ -4,6 +4,7 @@ use http_body_util::BodyExt;
 use hyper::{Request, body::Buf};
 use hyper_util::rt::TokioIo;
 use serde::Deserialize;
+use std::fmt::{self, Display};
 use std::sync::Arc;
 use std::{error::Error, io::Read};
 use tokio::net::TcpStream;
@@ -26,6 +27,25 @@ pub struct TibberAPI<'a> {
     tls_connector: TlsConnector,
 }
 
+// TODO: look into thiserror crate
+// TODO: look into how to derive the trait that allows boxing the error automagically
+#[derive(Debug)]
+pub enum ApiError {
+    MissingField(String),
+    NoPriceAvailable(Days),
+}
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingField(field) => write!(f, "missing field {}", field),
+            Self::NoPriceAvailable(day) => write!(f, "no prices available for {}", day),
+        }
+    }
+}
+
+impl Error for ApiError {}
+
 const API_URL: &'static str = "https://api.tibber.com/v1-beta/gql";
 
 impl<'a> TibberAPI<'a> {
@@ -46,7 +66,6 @@ impl<'a> TibberAPI<'a> {
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
         let addr = format!("{}:{}", host, port);
-        dbg!(&addr);
         let stream = TcpStream::connect(addr).await?;
         let tls_stream = self
             .tls_connector
@@ -81,40 +100,43 @@ impl<'a> TibberAPI<'a> {
         println!("body received");
         let mut content = String::new();
         body.reader().read_to_string(&mut content)?;
-        dbg!(&content);
+
         let serialized: ApiResult<Response<get_price_info::ResponseData>> =
             serde_json::from_str(&content);
-        println!("deserialized prices");
-        if let Err(e) = serialized {
-            eprintln!("failed to deserialize body {:?}", e);
-            return Err(Box::new(e));
-        }
-        let response = serialized.unwrap();
-        dbg!(&response);
-        let home = response.data.unwrap().viewer.homes;
-        let home = home[0].as_ref().expect("there is always a home");
-        let sub = home
-            .current_subscription.as_ref()
-            .expect("what are we even paying for");
-        let price_info = sub.price_info.as_ref().expect("no price no money");
-        let prices = match day {
+        let Ok(response) = serialized else {
+            return Err(Box::new(serialized.unwrap_err()));
+        };
+        let Some(data) = response.data else {
+            return Err(Box::new(ApiError::MissingField(String::from("data"))));
+        };
+        let Some(home) = &data.viewer.homes[0] else {
+            return Err(Box::new(ApiError::MissingField(String::from("home"))));
+        };
+        let Some(sub) = &home.current_subscription else {
+            return Err(Box::new(ApiError::MissingField(String::from(
+                "subscription",
+            ))));
+        };
+        let Some(price_info) = &sub.price_info else {
+            return Err(Box::new(ApiError::MissingField(String::from("price_info"))));
+        };
+
+        // TODO: Improve error handling here
+        let prices: Vec<f32> = match day {
             Days::TODAY => price_info
                 .today
                 .iter()
                 .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
                 .collect(),
-            Days::TOMORROW => {
-                if price_info.tomorrow.is_empty() {
-                    Vec::new()
-                } else {
-                    price_info
-                        .tomorrow
-                        .iter()
-                        .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
-                        .collect()
-                }
-            }
+            Days::TOMORROW => price_info
+                .tomorrow
+                .iter()
+                .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
+                .collect(),
         };
+        if prices.is_empty() {
+            return Err(Box::new(ApiError::NoPriceAvailable(day)));
+        }
         Ok(prices)
     }
 }
