@@ -6,7 +6,7 @@ use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
 use std::sync::RwLock;
 use tigrust::Days;
-use tigrust::cache::{Cache, Error as CacheError};
+use tigrust::cache::Cache;
 use tigrust::tibber_api::TibberAPI;
 
 #[derive(Clone, Debug)]
@@ -56,31 +56,29 @@ async fn prices(
     tapi: &State<TibberAPI<'_>>,
     cache: &State<RwLock<Cache<Prices>>>,
 ) -> Option<Json<Vec<f32>>> {
-    let read_cache = cache.read().unwrap();
-    let cached_value = read_cache.get_value();
-    match cached_value {
-        Ok(cached) => match cached.get(day) {
-            Some(prices) => Some(Json(prices.to_owned())),
-            None => None,
-        },
-        Err(CacheError::CacheExpired) => match tapi.get_prices(&day).await {
-            Err(e) => {
-                eprintln!("failed to get prices: {}", e);
-                None
+    // TODO: see if the RW lock can be made part of the cache
+    {   // This scope limits the lifetime of the read lease on the cache
+        let read_cache = cache.read().unwrap();
+        if read_cache.is_valid() {
+            match read_cache.get_value().unwrap().get(day) {
+                Some(prices) => return Some(Json(prices.to_owned())),
+                None => return None,
             }
-            Ok(prices) => {
-                let mut write_cache = cache.write().unwrap();
-                println!("hitting the api!");
-                let mut invalid = write_cache.get_unchecked().clone();
-                invalid.update(day, prices.clone());
-                write_cache.update_value(invalid.clone());
-                Some(Json(prices))
-            }
-        },
-        // Err(e) => {
-        //     eprintln!("error trying to access cache: {}", e);
-        //     None
-        // }
+        }
+    }
+    match tapi.get_prices(&day).await {
+        Err(e) => {
+            eprintln!("failed to get prices: {}", e);
+            None
+        }
+        Ok(prices) => {
+            let mut write_cache = cache.write().unwrap();
+            println!("hitting the api!");
+            let mut invalid = write_cache.get_unchecked().clone();
+            invalid.update(day, prices.clone());
+            write_cache.update_value(invalid.clone());
+            Some(Json(prices))
+        }
     }
 }
 
@@ -124,7 +122,9 @@ async fn main() -> Result<(), rocket::Error> {
         }
     }
     let cache: RwLock<Cache<Prices>> = RwLock::new(Cache::new(prices, 36000));
-    // cache.debug_invalidate_cache();
+    {
+        cache.write().unwrap().debug_invalidate_cache();
+    }
 
     let _rocket = rocket::build()
         .mount("/", routes![index, delay, graph, current_time, store])
