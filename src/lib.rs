@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 pub mod cache;
 pub mod tibber_api;
 
-#[derive(Debug)]
+#[derive(Clone,Debug)]
 pub enum Days {
     TODAY,
     TOMORROW,

@@ -61,7 +61,7 @@ impl<'a> TibberAPI<'a> {
         }
     }
 
-    pub async fn get_prices(&self, day: Days) -> Result<Vec<f32>, Box<dyn Error + Send + Sync>> {
+    pub async fn get_prices(&self, day: &Days) -> Result<Vec<f32>, Box<dyn Error + Send + Sync>> {
         let url: hyper::Uri = API_URL.parse().unwrap();
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
@@ -134,7 +134,7 @@ impl<'a> TibberAPI<'a> {
                 .collect(),
         };
         if prices.is_empty() {
-            return Err(Box::new(ApiError::NoPriceAvailable(day)));
+            return Err(Box::new(ApiError::NoPriceAvailable(day.clone())));
         }
         Ok(prices)
     }

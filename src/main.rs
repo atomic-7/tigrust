@@ -4,8 +4,31 @@ use rocket::State;
 use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
+use std::sync::RwLock;
 use tigrust::Days;
+use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::tibber_api::TibberAPI;
+
+#[derive(Clone, Debug)]
+struct Prices {
+    today: Option<Vec<f32>>,
+    tomorrow: Option<Vec<f32>>,
+}
+
+impl Prices {
+    pub fn get(&self, day: Days) -> &Option<Vec<f32>> {
+        match day {
+            Days::TODAY => &self.today,
+            Days::TOMORROW => &self.tomorrow,
+        }
+    }
+    pub fn update(&mut self, day: Days, prices: Vec<f32>) {
+        match day {
+            Days::TODAY => self.today = Some(prices),
+            Days::TOMORROW => self.tomorrow = Some(prices),
+        }
+    }
+}
 
 #[get("/")]
 fn index() -> &'static str {
@@ -25,18 +48,39 @@ fn store(value: i32) -> String {
     format!("stored your number({})!", value)
 }
 
-// TODO: look into bringing in serde directly
-
 // fn graph_json(day: Days) -> Option<content::RawJson<String>> {
 // need to figure out how to route by accept header
 #[get("/prices/<day>", format = "application/json")]
-async fn prices(day: Days, tapi: &State<TibberAPI<'_>>) -> Option<Json<Vec<f32>>> {
-    match tapi.get_prices(day).await {
-        Err(e) => {
-            eprintln!("failed to get prices: {}", e);
-            None
-        }
-        Ok(prices) => Some(Json(prices)),
+async fn prices(
+    day: Days,
+    tapi: &State<TibberAPI<'_>>,
+    cache: &State<RwLock<Cache<Prices>>>,
+) -> Option<Json<Vec<f32>>> {
+    let read_cache = cache.read().unwrap();
+    let cached_value = read_cache.get_value();
+    match cached_value {
+        Ok(cached) => match cached.get(day) {
+            Some(prices) => Some(Json(prices.to_owned())),
+            None => None,
+        },
+        Err(CacheError::CacheExpired) => match tapi.get_prices(&day).await {
+            Err(e) => {
+                eprintln!("failed to get prices: {}", e);
+                None
+            }
+            Ok(prices) => {
+                let mut write_cache = cache.write().unwrap();
+                println!("hitting the api!");
+                let mut invalid = write_cache.get_unchecked().clone();
+                invalid.update(day, prices.clone());
+                write_cache.update_value(invalid.clone());
+                Some(Json(prices))
+            }
+        },
+        // Err(e) => {
+        //     eprintln!("error trying to access cache: {}", e);
+        //     None
+        // }
     }
 }
 
@@ -58,10 +102,35 @@ async fn main() -> Result<(), rocket::Error> {
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     // TODO: See if TibberAPI needs to do anything to be threadsafe
     let tapi = TibberAPI::new(key);
+    let mut prices = Prices {
+        today: None,
+        tomorrow: None,
+    };
+    match tapi.get_prices(&Days::TODAY).await {
+        Err(e) => {
+            eprintln!("failed to get todays prices on startup: {}", e);
+        }
+        Ok(todays_prices) => {
+            prices.today = Some(todays_prices);
+        }
+    }
+    match tapi.get_prices(&Days::TOMORROW).await {
+        Err(e) => {
+            prices.tomorrow = None;
+            eprintln!("failed to get todays prices on startup: {}", e);
+        }
+        Ok(tomorrows_prices) => {
+            prices.tomorrow = Some(tomorrows_prices);
+        }
+    }
+    let cache: RwLock<Cache<Prices>> = RwLock::new(Cache::new(prices, 36000));
+    // cache.debug_invalidate_cache();
+
     let _rocket = rocket::build()
         .mount("/", routes![index, delay, graph, current_time, store])
         .mount("/api/", routes![prices])
         .manage(tapi)
+        .manage(cache)
         //.mount("/public", FileServer::from("/www/static"))
         .launch()
         .await?;

@@ -1,5 +1,7 @@
-use std::time::{Duration, Instant};
+use std::fmt::{self, Display};
+use std::mem::take;
 use std::result::Result;
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub struct Cache<T> {
@@ -13,30 +15,42 @@ pub enum Error {
     CacheExpired,
 }
 
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "cache expired")
+    }
+}
+
 impl<T> Cache<T> {
-    fn new(value: T, timeout: u64) -> Self {
+    pub fn new(value: T, timeout: u64) -> Self {
         Self {
             value,
             timeout: Duration::from_secs(timeout),
             last_update: Instant::now(),
         }
     }
-    fn get_value(&self) -> Result<&T, Error>{
+    pub fn get_value(&self) -> Result<&T, Error> {
         if self.is_valid() {
             Ok(&self.value)
         } else {
             Err(Error::CacheExpired)
         }
     }
-    fn last_updated(&self) -> &Instant {
+    pub fn get_unchecked(&self) -> &T {
+        return &self.value;
+    }
+    pub fn last_updated(&self) -> &Instant {
         &self.last_update
     }
-    fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         self.last_update + self.timeout > Instant::now()
     }
-    fn update_value(&mut self, value: T) {
+    pub fn update_value(&mut self, value: T) {
         self.value = value;
         self.last_update = Instant::now();
+    }
+    pub fn debug_invalidate_cache(&mut self) {
+        self.last_update = self.last_update.checked_sub(self.timeout).unwrap();
     }
 }
 
@@ -49,7 +63,10 @@ mod tests {
     #[test]
     fn create_cache() {
         let test_cache = Cache::new(String::from("hello world"), 20);
-        assert_eq!(String::from("hello world"), test_cache.get_value().unwrap().to_owned());
+        assert_eq!(
+            String::from("hello world"),
+            test_cache.get_value().unwrap().to_owned()
+        );
     }
 
     #[test]
