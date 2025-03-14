@@ -1,12 +1,11 @@
 use chrono;
 use dotenv;
+use rocket::State;
 use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
-use tigrust::tibber_api::TibberAPI;
 use tigrust::Days;
-
-// #[macro_use] extern crate rocket;
+use tigrust::tibber_api::TibberAPI;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -26,23 +25,18 @@ fn store(value: i32) -> String {
     format!("stored your number({})!", value)
 }
 
-
 // TODO: look into bringing in serde directly
 
 // fn graph_json(day: Days) -> Option<content::RawJson<String>> {
 // need to figure out how to route by accept header
 #[get("/prices/<day>", format = "application/json")]
-async fn prices(day: Days) -> Option<Json<Vec<f32>>> {
-    // TODO: move this to managed state
-    let _ = dotenv::dotenv();
-    let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
-    let tapi = TibberAPI::new(key);
+async fn prices(day: Days, tapi: &State<TibberAPI<'_>>) -> Option<Json<Vec<f32>>> {
     match tapi.get_prices(day).await {
         Err(e) => {
             eprintln!("failed to get prices: {}", e);
             None
         }
-        Ok(prices) => Some(Json(prices))
+        Ok(prices) => Some(Json(prices)),
     }
 }
 
@@ -60,12 +54,14 @@ fn current_time() -> String {
 // chosen runtime
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    let _ = dotenv::dotenv();
+    let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
+    // TODO: See if TibberAPI needs to do anything to be threadsafe
+    let tapi = TibberAPI::new(key);
     let _rocket = rocket::build()
-        .mount(
-            "/",
-            routes![index, delay, graph, current_time, store],
-        )
+        .mount("/", routes![index, delay, graph, current_time, store])
         .mount("/api/", routes![prices])
+        .manage(tapi)
         //.mount("/public", FileServer::from("/www/static"))
         .launch()
         .await?;

@@ -97,7 +97,6 @@ impl<'a> TibberAPI<'a> {
             .body(request_body)?;
         let res = sender.send_request(req).await?;
         let body = res.collect().await?.aggregate();
-        println!("body received");
         let mut content = String::new();
         body.reader().read_to_string(&mut content)?;
 
