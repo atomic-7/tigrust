@@ -1,6 +1,7 @@
 use rocket::request::FromParam;
 use std::fmt::{self, Display};
 pub mod cache;
+pub mod plot;
 pub mod tibber_api;
 
 // TODO: check where the copy semantics make life easier

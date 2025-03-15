@@ -4,9 +4,11 @@ use rocket::State;
 use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
+use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::tibber_api::{Prices, TibberAPI};
+use tigrust::plot::Graph;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -66,8 +68,14 @@ async fn prices(
 }
 
 #[get("/graph/<day>")]
-fn graph(day: Days) -> String {
-    format!("graphing {}", day)
+fn graph(day: Days, cache: &State<Cache<Prices>>) -> String {
+    let prices = cache.get_value().unwrap();
+    let prices = prices.get(day).as_ref().unwrap();
+    let grap = Graph::new();
+    let mut buf = Vec::new();
+    let _ = grap.plot(Box::new(&mut buf), &prices);
+    from_utf8(buf.as_slice()).unwrap().to_string()
+    // format!("graphing {}", day)
 }
 
 #[get("/time")]
@@ -84,8 +92,8 @@ async fn main() -> Result<(), rocket::Error> {
     // TODO: See if TibberAPI needs to do anything to be threadsafe
     let tapi = TibberAPI::new(key);
     let prices = tapi.get_prices().await.unwrap();
-    let mut cache: Cache<Prices> = Cache::new(prices, 36000);
-    cache.debug_expire_cache();
+    let cache: Cache<Prices> = Cache::new(prices, 36000);
+    // cache.debug_expire_cache();
 
     let _rocket = rocket::build()
         .mount("/", routes![index, delay, graph, current_time, store])
