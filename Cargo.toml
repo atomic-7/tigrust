@@ -24,4 +24,5 @@ dotenv = "0.15.0"
 tokio-rustls = "0.26.2"
 # Check tls certs againts certs on the platform
 rustls-platform-verifier = "0.3"
+svg = "0.18.0"
 
