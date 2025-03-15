@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 use std::result::Result;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard};
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
@@ -29,17 +29,17 @@ impl<T: Clone> Cache<T> {
             last_update: RwLock::new(Instant::now()),
         }
     }
-    pub fn get_value(&self) -> Result<T, Error> {
+    pub fn get_value(&self) -> Result<RwLockReadGuard<'_, T>, Error> {
         if self.is_valid() {
             let value_guard = self.value.read().unwrap();
-            Ok(value_guard.clone())
+            Ok(value_guard)
         } else {
             Err(Error::CacheExpired)
         }
     }
-    pub fn get_unchecked(&self) -> T {
+    pub fn get_unchecked(&self) -> RwLockReadGuard<'_, T> {
         let value_guard = self.value.read().unwrap();
-        return value_guard.clone();
+        return value_guard;
     }
     pub fn last_updated(&self) -> Instant {
         let read_guard = self.last_update.read().unwrap();
@@ -55,7 +55,7 @@ impl<T: Clone> Cache<T> {
         let mut time_guard = self.last_update.write().unwrap();
         *time_guard = Instant::now();
     }
-    pub fn debug_invalidate_cache(&mut self) {
+    pub fn debug_expire_cache(&mut self) {
         let mut time_guard = self.last_update.write().unwrap();
         *time_guard = time_guard.checked_sub(self.timeout).unwrap();
     }

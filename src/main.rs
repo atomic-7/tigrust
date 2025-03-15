@@ -6,8 +6,7 @@ use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
-use tigrust::tibber_api::{TibberAPI, Prices};
-
+use tigrust::tibber_api::{Prices, TibberAPI};
 
 #[get("/")]
 fn index() -> &'static str {
@@ -35,30 +34,34 @@ async fn prices(
     tapi: &State<TibberAPI<'_>>,
     cache: &State<Cache<Prices>>,
 ) -> Option<Json<Vec<f32>>> {
-    match cache.get_value() {
+    let value_guard = cache.get_value();
+    match value_guard {
         Ok(cached) => match cached.get(day) {
             Some(prices) => Some(Json(prices.to_owned())),
             None => None,
         },
-        Err(CacheError::CacheExpired) => match tapi.get_prices().await {
-            Err(e) => {
-                eprintln!("failed to get prices: {}", e);
-                None
-            }
-            Ok(prices) => {
-                println!("hitting the api!");
-                // could probably be avoided by implementing DeRefMut, but I don't understand the
-                // implications yet
-                // let days_prices = prices.get(day).as_ref().unwrap().clone();
-                cache.update_value(prices.clone());
-                if let Some(data) = prices.get(day) {
-                    Some(Json(data.to_owned()))
-                } else {
-                    // no price data available for day, improve err msg
+        Err(CacheError::CacheExpired) => {
+            // drop the guard so it does not need to live across async boundaries
+            drop(value_guard);
+            match tapi.get_prices().await {
+                Err(e) => {
+                    eprintln!("failed to get prices: {}", e);
                     None
                 }
+                Ok(prices) => {
+                    println!("hitting the api!");
+                    // could probably be avoided by implementing DeRefMut, but I don't understand the
+                    // implications yet
+                    cache.update_value(prices.clone());
+                    if let Some(data) = prices.get(day) {
+                        Some(Json(data.to_owned()))
+                    } else {
+                        // no price data available for day, TODO: improve err msg
+                        None
+                    }
+                }
             }
-        },
+        }
     }
 }
 
@@ -82,7 +85,7 @@ async fn main() -> Result<(), rocket::Error> {
     let tapi = TibberAPI::new(key);
     let prices = tapi.get_prices().await.unwrap();
     let mut cache: Cache<Prices> = Cache::new(prices, 36000);
-    cache.debug_invalidate_cache();
+    cache.debug_expire_cache();
 
     let _rocket = rocket::build()
         .mount("/", routes![index, delay, graph, current_time, store])
