@@ -39,29 +39,3 @@ impl<'a> FromParam<'a> for Days {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Prices {
-    pub today: Option<Vec<f32>>,
-    pub tomorrow: Option<Vec<f32>>,
-}
-
-impl Prices {
-    pub fn new() -> Self {
-        Self {
-            today: None,
-            tomorrow: None,
-        }
-    }
-    pub fn get(&self, day: Days) -> &Option<Vec<f32>> {
-        match day {
-            Days::TODAY => &self.today,
-            Days::TOMORROW => &self.tomorrow,
-        }
-    }
-    pub fn update(&mut self, day: Days, prices: Vec<f32>) {
-        match day {
-            Days::TODAY => self.today = Some(prices),
-            Days::TOMORROW => self.tomorrow = Some(prices),
-        }
-    }
-}

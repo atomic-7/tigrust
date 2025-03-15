@@ -4,9 +4,9 @@ use rocket::State;
 use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
-use tigrust::{Days, Prices};
+use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
-use tigrust::tibber_api::TibberAPI;
+use tigrust::tibber_api::{TibberAPI, Prices};
 
 
 #[get("/")]
@@ -40,7 +40,7 @@ async fn prices(
             Some(prices) => Some(Json(prices.to_owned())),
             None => None,
         },
-        Err(CacheError::CacheExpired) => match tapi.get_prices(&day).await {
+        Err(CacheError::CacheExpired) => match tapi.get_prices().await {
             Err(e) => {
                 eprintln!("failed to get prices: {}", e);
                 None
@@ -49,15 +49,14 @@ async fn prices(
                 println!("hitting the api!");
                 // could probably be avoided by implementing DeRefMut, but I don't understand the
                 // implications yet
-                let mut updated = Prices::new();
-                updated.update(day, prices.clone());
-                let other_prices = tapi.get_prices(&day.other()).await.ok();
-                if let Some(success) = other_prices {
-                    updated.update(day.other(), success);
-                }
                 // let days_prices = prices.get(day).as_ref().unwrap().clone();
-                cache.update_value(updated);
-                Some(Json(prices))
+                cache.update_value(prices.clone());
+                if let Some(data) = prices.get(day) {
+                    Some(Json(data.to_owned()))
+                } else {
+                    // no price data available for day, improve err msg
+                    None
+                }
             }
         },
     }
@@ -81,24 +80,7 @@ async fn main() -> Result<(), rocket::Error> {
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     // TODO: See if TibberAPI needs to do anything to be threadsafe
     let tapi = TibberAPI::new(key);
-    let mut prices = Prices::new();
-    match tapi.get_prices(&Days::TODAY).await {
-        Err(e) => {
-            eprintln!("failed to get todays prices on startup: {}", e);
-        }
-        Ok(todays_prices) => {
-            prices.today = Some(todays_prices);
-        }
-    }
-    match tapi.get_prices(&Days::TOMORROW).await {
-        Err(e) => {
-            prices.tomorrow = None;
-            eprintln!("failed to get todays prices on startup: {}", e);
-        }
-        Ok(tomorrows_prices) => {
-            prices.tomorrow = Some(tomorrows_prices);
-        }
-    }
+    let prices = tapi.get_prices().await.unwrap();
     let mut cache: Cache<Prices> = Cache::new(prices, 36000);
     cache.debug_invalidate_cache();
 

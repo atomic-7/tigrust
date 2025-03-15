@@ -61,7 +61,7 @@ impl<'a> TibberAPI<'a> {
         }
     }
 
-    pub async fn get_prices(&self, day: &Days) -> Result<Vec<f32>, Box<dyn Error + Send + Sync>> {
+    pub async fn get_prices(&self) -> Result<Prices, Box<dyn Error + Send + Sync>> {
         let url: hyper::Uri = API_URL.parse().unwrap();
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
@@ -120,35 +120,48 @@ impl<'a> TibberAPI<'a> {
             return Err(Box::new(ApiError::MissingField(String::from("price_info"))));
         };
 
+        let mut prices = Prices::new();
+
         // TODO: Improve error handling here
-        let prices: Vec<f32> = match day {
-            Days::TODAY => price_info
-                .today
-                .iter()
-                .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
-                .collect(),
-            Days::TOMORROW => price_info
-                .tomorrow
-                .iter()
-                .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
-                .collect(),
-        };
-        if prices.is_empty() {
-            return Err(Box::new(ApiError::NoPriceAvailable(day.clone())));
-        }
+        prices.today = price_info
+            .today
+            .iter()
+            .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
+            .collect::<Vec<f32>>()
+            .into();
+        prices.tomorrow = price_info
+            .tomorrow
+            .iter()
+            .map(|p| p.as_ref().unwrap().total.unwrap() as f32)
+            .collect::<Vec<f32>>()
+            .into();
         Ok(prices)
     }
+}
 
-    // pub async fn get_both_prices(&self) -> Result<Prices, Box<dyn Error + Send + Sync>> {
-    //     let mut prices = Prices::new();
-    //     match self.get_prices(&Days::TODAY).await {
-    //         Err(e) => return Err(e),
-    //         Ok(today) => prices.today = Some(today),
-    //     }
-    //     match self.get_prices(&Days::TOMORROW).await {
-    //         Err(ApiError::NoPriceAvailable(Days::TOMORROW)) => prices.tomorrow = None,
-    //         Ok(tomorrow) => prices.tomorrow = Some(tomorrow),
-    //     }
-    //     Ok(prices)
-    // }
+#[derive(Clone, Debug)]
+pub struct Prices {
+    pub today: Option<Vec<f32>>,
+    pub tomorrow: Option<Vec<f32>>,
+}
+
+impl Prices {
+    pub fn new() -> Self {
+        Self {
+            today: None,
+            tomorrow: None,
+        }
+    }
+    pub fn get(&self, day: Days) -> &Option<Vec<f32>> {
+        match day {
+            Days::TODAY => &self.today,
+            Days::TOMORROW => &self.tomorrow,
+        }
+    }
+    pub fn update(&mut self, day: Days, prices: Vec<f32>) {
+        match day {
+            Days::TODAY => self.today = Some(prices),
+            Days::TOMORROW => self.tomorrow = Some(prices),
+        }
+    }
 }
