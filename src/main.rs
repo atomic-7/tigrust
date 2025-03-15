@@ -4,31 +4,10 @@ use rocket::State;
 use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
-use std::sync::RwLock;
-use tigrust::Days;
-use tigrust::cache::Cache;
+use tigrust::{Days, Prices};
+use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::tibber_api::TibberAPI;
 
-#[derive(Clone, Debug)]
-struct Prices {
-    today: Option<Vec<f32>>,
-    tomorrow: Option<Vec<f32>>,
-}
-
-impl Prices {
-    pub fn get(&self, day: Days) -> &Option<Vec<f32>> {
-        match day {
-            Days::TODAY => &self.today,
-            Days::TOMORROW => &self.tomorrow,
-        }
-    }
-    pub fn update(&mut self, day: Days, prices: Vec<f32>) {
-        match day {
-            Days::TODAY => self.today = Some(prices),
-            Days::TOMORROW => self.tomorrow = Some(prices),
-        }
-    }
-}
 
 #[get("/")]
 fn index() -> &'static str {
@@ -54,31 +33,33 @@ fn store(value: i32) -> String {
 async fn prices(
     day: Days,
     tapi: &State<TibberAPI<'_>>,
-    cache: &State<RwLock<Cache<Prices>>>,
+    cache: &State<Cache<Prices>>,
 ) -> Option<Json<Vec<f32>>> {
-    // TODO: see if the RW lock can be made part of the cache
-    {   // This scope limits the lifetime of the read lease on the cache
-        let read_cache = cache.read().unwrap();
-        if read_cache.is_valid() {
-            match read_cache.get_value().unwrap().get(day) {
-                Some(prices) => return Some(Json(prices.to_owned())),
-                None => return None,
+    match cache.get_value() {
+        Ok(cached) => match cached.get(day) {
+            Some(prices) => Some(Json(prices.to_owned())),
+            None => None,
+        },
+        Err(CacheError::CacheExpired) => match tapi.get_prices(&day).await {
+            Err(e) => {
+                eprintln!("failed to get prices: {}", e);
+                None
             }
-        }
-    }
-    match tapi.get_prices(&day).await {
-        Err(e) => {
-            eprintln!("failed to get prices: {}", e);
-            None
-        }
-        Ok(prices) => {
-            let mut write_cache = cache.write().unwrap();
-            println!("hitting the api!");
-            let mut invalid = write_cache.get_unchecked().clone();
-            invalid.update(day, prices.clone());
-            write_cache.update_value(invalid.clone());
-            Some(Json(prices))
-        }
+            Ok(prices) => {
+                println!("hitting the api!");
+                // could probably be avoided by implementing DeRefMut, but I don't understand the
+                // implications yet
+                let mut updated = Prices::new();
+                updated.update(day, prices.clone());
+                let other_prices = tapi.get_prices(&day.other()).await.ok();
+                if let Some(success) = other_prices {
+                    updated.update(day.other(), success);
+                }
+                // let days_prices = prices.get(day).as_ref().unwrap().clone();
+                cache.update_value(updated);
+                Some(Json(prices))
+            }
+        },
     }
 }
 
@@ -100,10 +81,7 @@ async fn main() -> Result<(), rocket::Error> {
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     // TODO: See if TibberAPI needs to do anything to be threadsafe
     let tapi = TibberAPI::new(key);
-    let mut prices = Prices {
-        today: None,
-        tomorrow: None,
-    };
+    let mut prices = Prices::new();
     match tapi.get_prices(&Days::TODAY).await {
         Err(e) => {
             eprintln!("failed to get todays prices on startup: {}", e);
@@ -121,10 +99,8 @@ async fn main() -> Result<(), rocket::Error> {
             prices.tomorrow = Some(tomorrows_prices);
         }
     }
-    let cache: RwLock<Cache<Prices>> = RwLock::new(Cache::new(prices, 36000));
-    {
-        cache.write().unwrap().debug_invalidate_cache();
-    }
+    let mut cache: Cache<Prices> = Cache::new(prices, 36000);
+    cache.debug_invalidate_cache();
 
     let _rocket = rocket::build()
         .mount("/", routes![index, delay, graph, current_time, store])

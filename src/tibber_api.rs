@@ -138,4 +138,17 @@ impl<'a> TibberAPI<'a> {
         }
         Ok(prices)
     }
+
+    // pub async fn get_both_prices(&self) -> Result<Prices, Box<dyn Error + Send + Sync>> {
+    //     let mut prices = Prices::new();
+    //     match self.get_prices(&Days::TODAY).await {
+    //         Err(e) => return Err(e),
+    //         Ok(today) => prices.today = Some(today),
+    //     }
+    //     match self.get_prices(&Days::TOMORROW).await {
+    //         Err(ApiError::NoPriceAvailable(Days::TOMORROW)) => prices.tomorrow = None,
+    //         Ok(tomorrow) => prices.tomorrow = Some(tomorrow),
+    //     }
+    //     Ok(prices)
+    // }
 }

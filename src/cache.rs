@@ -1,13 +1,13 @@
 use std::fmt::{self, Display};
-use std::mem::take;
 use std::result::Result;
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub struct Cache<T> {
-    value: T,
+    value: RwLock<T>,
     timeout: Duration,
-    last_update: Instant,
+    last_update: RwLock<Instant>,
 }
 
 #[derive(Debug)]
@@ -21,36 +21,43 @@ impl Display for Error {
     }
 }
 
-impl<T> Cache<T> {
+impl<T: Clone> Cache<T> {
     pub fn new(value: T, timeout: u64) -> Self {
         Self {
-            value,
+            value: RwLock::new(value),
             timeout: Duration::from_secs(timeout),
-            last_update: Instant::now(),
+            last_update: RwLock::new(Instant::now()),
         }
     }
-    pub fn get_value(&self) -> Result<&T, Error> {
+    pub fn get_value(&self) -> Result<T, Error> {
         if self.is_valid() {
-            Ok(&self.value)
+            let value_guard = self.value.read().unwrap();
+            Ok(value_guard.clone())
         } else {
             Err(Error::CacheExpired)
         }
     }
-    pub fn get_unchecked(&self) -> &T {
-        return &self.value;
+    pub fn get_unchecked(&self) -> T {
+        let value_guard = self.value.read().unwrap();
+        return value_guard.clone();
     }
-    pub fn last_updated(&self) -> &Instant {
-        &self.last_update
+    pub fn last_updated(&self) -> Instant {
+        let read_guard = self.last_update.read().unwrap();
+        read_guard.clone()
     }
     pub fn is_valid(&self) -> bool {
-        self.last_update + self.timeout > Instant::now()
+        let read_guard = self.last_update.read().unwrap();
+        read_guard.checked_add(self.timeout).unwrap() > Instant::now()
     }
-    pub fn update_value(&mut self, value: T) {
-        self.value = value;
-        self.last_update = Instant::now();
+    pub fn update_value(&self, value: T) {
+        let mut value_guard = self.value.write().unwrap();
+        *value_guard = value;
+        let mut time_guard = self.last_update.write().unwrap();
+        *time_guard = Instant::now();
     }
     pub fn debug_invalidate_cache(&mut self) {
-        self.last_update = self.last_update.checked_sub(self.timeout).unwrap();
+        let mut time_guard = self.last_update.write().unwrap();
+        *time_guard = time_guard.checked_sub(self.timeout).unwrap();
     }
 }
 
@@ -71,11 +78,11 @@ mod tests {
 
     #[test]
     fn update_updates_last_updated() {
-        let mut cache = Cache::new(64, 20);
-        let start = cache.last_updated().to_owned();
+        let cache = Cache::new(64, 20);
+        let start = cache.last_updated();
         sleep(Duration::from_millis(20));
         cache.update_value(42);
         let end = cache.last_updated();
-        assert_ne!(start, *end);
+        assert_ne!(start, end);
     }
 }
