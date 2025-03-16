@@ -4,16 +4,13 @@ use rocket::State;
 use rocket::serde::json::Json;
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
+use rocket_dyn_templates::{Template, context};
 use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::tibber_api::{Prices, TibberAPI};
 use tigrust::plot::Graph;
 
-#[get("/")]
-fn index() -> &'static str {
-    "Hello, world!"
-}
 
 // route handlers can be async functions
 // parameters are specified with <> brackets
@@ -36,10 +33,18 @@ async fn prices(
     tapi: &State<TibberAPI<'_>>,
     cache: &State<Cache<Prices>>,
 ) -> Option<Json<Vec<f32>>> {
+    if let Some(p) = prices_by_day(day, tapi, cache).await {
+        return Some(Json(p))
+    }
+    None
+}
+
+async fn prices_by_day(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Option<Vec<f32>> {
+
     let value_guard = cache.get_value();
     match value_guard {
         Ok(cached) => match cached.get(day) {
-            Some(prices) => Some(Json(prices.to_owned())),
+            Some(prices) => Some(prices.to_owned()),
             None => None,
         },
         Err(CacheError::CacheExpired) => {
@@ -56,7 +61,7 @@ async fn prices(
                     // implications yet
                     cache.update_value(prices.clone());
                     if let Some(data) = prices.get(day) {
-                        Some(Json(data.to_owned()))
+                        Some(data.to_owned())
                     } else {
                         // no price data available for day, TODO: improve err msg
                         None
@@ -68,19 +73,27 @@ async fn prices(
 }
 
 #[get("/graph/<day>")]
-fn graph(day: Days, cache: &State<Cache<Prices>>) -> String {
-    let prices = cache.get_value().unwrap();
-    let prices = prices.get(day).as_ref().unwrap();
-    let grap = Graph::new();
-    let mut buf = Vec::new();
-    let _ = grap.plot(Box::new(&mut buf), &prices);
-    from_utf8(buf.as_slice()).unwrap().to_string()
-    // format!("graphing {}", day)
+async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> String {
+    match prices_by_day(day, tapi, cache).await {
+        None => String::from(format!("prices for {} not available", day)),
+        Some(prices) => {
+            let mut buf = Vec::new();
+            let graph = Graph::new();
+            let _ = graph.plot(Box::new(&mut buf), &prices);
+            from_utf8(buf.as_slice()).unwrap().to_string()
+        }
+    }
 }
 
 #[get("/time")]
 fn current_time() -> String {
     format!("{}", chrono::offset::Local::now().format("%H:%M"))
+}
+
+#[get("/")]
+async fn index(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
+    let plot = graph(Days::TODAY, tapi, cache).await;
+    Template::render("index", context!{plot: plot, time: current_time()})
 }
 
 // rocket::main launches the tokio runtime, if this is not desired leave it out and start the
@@ -96,6 +109,7 @@ async fn main() -> Result<(), rocket::Error> {
     // cache.debug_expire_cache();
 
     let _rocket = rocket::build()
+        .attach(Template::fairing())
         .mount("/", routes![index, delay, graph, current_time, store])
         .mount("/api/", routes![prices])
         .manage(tapi)

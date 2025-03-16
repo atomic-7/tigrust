@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Tigrust</title>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+	</head>
+	<body>
+		<p style="font-size: 2rem">{{ time }}</p>
+		<hr />
+		<div>{{ plot | safe }}</div>
+	</body>
+</html>

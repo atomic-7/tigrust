@@ -1,6 +1,5 @@
 use std::io::Write;
 use svg::node::element::Group;
-use svg::node::element::Style;
 use svg::node::element::Rectangle;
 pub struct Graph {
     pub x: u32,
@@ -19,6 +18,7 @@ impl Graph {
         }
     }
     pub fn plot<W: Write>(&self, writer: W, prices: &Vec<f32>) -> Result<(), std::io::Error> {
+        // TODO: make sure the values are integers
         let (min_price, max_price) = prices
             .iter()
             .fold((100.0, -100.0), |(acc_min, acc_max), &p| {
@@ -39,12 +39,6 @@ impl Graph {
         let barspacing = 5;
         let barwidth = interval - barspacing as f32;
 
-        // TOOD: figure out how this style componentn is supposed to work
-        let default_style = Style::new("fill:lightgray; stroke:black")
-            .set("fill", "lightgray")
-            .set("stroke", "black");
-        
-
         let mut bars = Group::new();
         for (idx, price) in prices.iter().enumerate() {
             let scaled_price = map_range(*price, floor, ceil, 0.0, bottom as f32);
@@ -60,16 +54,17 @@ impl Graph {
         }
 
         let outer_group = Group::new()
-            .add(default_style)
+            .set("fill", "lightgray")
+            .set("stroke", "black")
             .add(bars);
 
         let doc = svg::Document::new()
             // TODO: make the viewbox dynamic, tigraph uses 1100 here
-            .set("width", self.width) // height in user coordinate system
-            .set("height", self.height)
-            .set("viewBox", (0, 0, 1650, 1200)) // viewbox mapped to the size of the svg elem
-            // TODO: make an enum for the aspect ratios
             .set("preserveAspectRatio", String::from("xMaxYMin"))
+            .set("viewBox", (0, 0, 1650, 1200)) // viewbox mapped to the size of the svg elem
+            .set("height", self.height)
+            .set("width", self.width) // height in user coordinate system
+            // TODO: make an enum for the aspect ratios
             .add(outer_group);
         
         svg::write(writer, &doc)
