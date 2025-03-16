@@ -2,6 +2,7 @@ use chrono;
 use dotenv;
 use rocket::State;
 use rocket::serde::json::Json;
+use rocket::fs::{relative, FileServer};
 use rocket::tokio::time::{Duration, sleep};
 use rocket::{get, put, routes};
 use rocket_dyn_templates::{Template, context};
@@ -73,8 +74,8 @@ async fn prices_by_day(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cac
 }
 
 #[get("/graph/<day>")]
-async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> String {
-    match prices_by_day(day, tapi, cache).await {
+async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
+    let plot = match prices_by_day(day, tapi, cache).await {
         None => String::from(format!("prices for {} not available", day)),
         Some(prices) => {
             let mut buf = Vec::new();
@@ -82,7 +83,8 @@ async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Price
             let _ = graph.plot(Box::new(&mut buf), &prices);
             from_utf8(buf.as_slice()).unwrap().to_string()
         }
-    }
+    };
+    Template::render("graph", context!{ graph: plot, refresh_rate: 60})
 }
 
 #[get("/time")]
@@ -91,9 +93,8 @@ fn current_time() -> String {
 }
 
 #[get("/")]
-async fn index(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
-    let plot = graph(Days::TODAY, tapi, cache).await;
-    Template::render("index", context!{plot: plot, time: current_time()})
+async fn index() -> Template {
+    Template::render("index", context!{time: current_time()})
 }
 
 // rocket::main launches the tokio runtime, if this is not desired leave it out and start the
@@ -114,7 +115,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/api/", routes![prices])
         .manage(tapi)
         .manage(cache)
-        //.mount("/public", FileServer::from("/www/static"))
+        .mount("/static", FileServer::from(relative!("static")))
         .launch()
         .await?;
     Ok(())
