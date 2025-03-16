@@ -18,3 +18,26 @@ hr {
 	border-top: 4px solid black;
 	width: 95%;
 }
+
+.infobar {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-around;
+	align-items: center;
+	flex: 0 3 auto;
+	/* width: 100vh; */
+	width: 100%;
+	height: min(15vh, 150px);
+}
+
+.site-content {
+	flex: 0 7 100%;
+	display: flex;
+	justify-content: center;
+	height: 100%;
+}
+
+#display-frame {
+	flex: 1 1 auto;
+	height: 85vh;
+}
