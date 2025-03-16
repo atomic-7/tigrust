@@ -84,7 +84,7 @@ async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Price
             from_utf8(buf.as_slice()).unwrap().to_string()
         }
     };
-    Template::render("graph", context!{ graph: plot, refresh_rate: 60})
+    Template::render("graph", context!{ graph: plot, refresh_rate: 3600})
 }
 
 #[get("/time")]

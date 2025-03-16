@@ -1,6 +1,6 @@
 use std::io::Write;
 use svg::node::element::Group;
-use svg::node::element::{Rectangle, Text};
+use svg::node::element::{Rectangle, Text, Line};
 pub struct Graph {
     pub x: u32,
     pub y: u32,
@@ -42,7 +42,7 @@ impl Graph {
         let interval = (self.width as f32 / prices.len() as f32) - 1.0;
         let barspacing = 5;
         let barwidth = interval - barspacing as f32;
-        let time_big_font = 1.75;   // in em
+        let big_font = 1.75;   // in em
 
         // TODO: Evaluate relative units to hopefully get scaling out of the box
         let mut bars = Group::new();
@@ -71,9 +71,33 @@ impl Graph {
                 .set("x", x_coord + (barwidth / 2.0))
                 .set("y", if idx %3 == 0 { bottom + 36 } else { bottom + 31 });
             if idx % 3 == 0 {
-                time = time.set("font-size", format!("{}em", time_big_font));
+                time = time.set("font-size", format!("{}em", big_font));
             }
             times = times.add(time);
+        }
+
+        //
+        let mut help_lines = Group::new()
+            .set("stroke", "black")
+            .set("stroke-width", 1.0);
+        let mut axis_numbers = Group::new()
+            .set("font-size", format!("{}em", 3. * big_font));
+        let mut idx = 0;
+        while floor + idx as f32 * step < max_price {
+            let line_height = map_range(floor + idx as f32 * step, floor as f32, ceil as f32, self.y as f32, bottom as f32);
+            help_lines = help_lines.add(
+                Line::new()
+                    .set("x1", self.x + (self.width - self.view_width) / 2)
+                    .set("y1", bottom as f32 - line_height)
+                    .set("x2", self.x + self.view_width - (self.width - self.view_width) / 2)
+                    .set("y2", bottom as f32 - line_height)
+            );
+            axis_numbers = axis_numbers.add(
+                Text::new(format!("{:.1}", (floor + idx as f32 * step) * 100.0))
+                    .set("x", self.x + 20)
+                    .set("y", bottom as f32 - line_height - 10.)
+            );
+            idx += 1;
         }
 
         let outer_group = Group::new()
@@ -81,7 +105,9 @@ impl Graph {
             .set("stroke", "black")
             .add(bars)
             .add(price_tags)
-            .add(times);
+            .add(times)
+            .add(help_lines)
+            .add(axis_numbers);
 
         let doc = svg::Document::new()
             // TODO: make the viewbox dynamic, tigraph uses 1100 here
