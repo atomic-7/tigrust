@@ -39,7 +39,9 @@ impl Graph {
         let floor = min_price - (min_price % step);
         let ceil = max_price + step - (max_price % step);
         let bottom = 1100;  // y corner + height until the bottom of the bars
-        let interval = (self.width as f32 / prices.len() as f32) - 1.0;
+        let margin_left = 30.; // how much space should be kept to the side
+        let margin_right = 30.;
+        let interval = (((self.width as f32) - margin_left - margin_right) / prices.len() as f32) - 1.0;
         let barspacing = 5;
         let barwidth = interval - barspacing as f32;
         let big_font = 1.75;   // in em
@@ -52,7 +54,7 @@ impl Graph {
         for (idx, price) in prices.iter().enumerate() {
             let scaled_price = map_range(*price, floor, ceil, 0.0, bottom as f32);
             // xcoord := p.x + (p.width-p.w) + idx*int(interval)
-            let x_coord = (self.x as f32) + (self.width - self.view_width) as f32 + (idx as f32) * interval;
+            let x_coord = margin_left + (self.width - self.view_width) as f32 + (idx as f32) * interval;
             bars = bars.add(
                 Rectangle::new()
                 .set("x", x_coord)
@@ -81,7 +83,7 @@ impl Graph {
             .set("stroke", "black")
             .set("stroke-width", 1.0);
         let mut axis_numbers = Group::new()
-            .set("font-size", format!("{}em", 3. * big_font));
+            .set("font-size", format!("{}em", big_font));
         let mut idx = 0;
         while floor + idx as f32 * step < max_price {
             let line_height = map_range(floor + idx as f32 * step, floor as f32, ceil as f32, self.y as f32, bottom as f32);
@@ -89,11 +91,11 @@ impl Graph {
                 Line::new()
                     .set("x1", self.x + (self.width - self.view_width) / 2)
                     .set("y1", bottom as f32 - line_height)
-                    .set("x2", self.x + self.view_width - (self.width - self.view_width) / 2)
+                    .set("x2", self.x + self.view_width - (self.width - self.view_width) / 2 - margin_right as u32)
                     .set("y2", bottom as f32 - line_height)
             );
             axis_numbers = axis_numbers.add(
-                Text::new(format!("{:.1}", (floor + idx as f32 * step) * 100.0))
+                Text::new(format!("{:.0}", (floor + idx as f32 * step) * 100.0))
                     .set("x", self.x + 20)
                     .set("y", bottom as f32 - line_height - 10.)
             );
