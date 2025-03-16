@@ -34,7 +34,7 @@ hr {
 	flex: 0 7 100%;
 	display: flex;
 	justify-content: center;
-	height: 100%;
+	width: 100%;
 }
 
 #display-frame {

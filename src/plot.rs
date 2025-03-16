@@ -1,11 +1,13 @@
 use std::io::Write;
 use svg::node::element::Group;
-use svg::node::element::Rectangle;
+use svg::node::element::{Rectangle, Text};
 pub struct Graph {
     pub x: u32,
     pub y: u32,
     pub width: u32,
     pub height: u32,
+    pub view_width: u32,
+    pub view_height: u32,
 }
 
 impl Graph {
@@ -15,6 +17,8 @@ impl Graph {
             y: 0,
             width: 1650,
             height: 1200,
+            view_width: 1650,
+            view_height: 1200,
         }
     }
     pub fn plot<W: Write>(&self, writer: W, prices: &Vec<f32>) -> Result<(), std::io::Error> {
@@ -38,12 +42,17 @@ impl Graph {
         let interval = (self.width as f32 / prices.len() as f32) - 1.0;
         let barspacing = 5;
         let barwidth = interval - barspacing as f32;
+        let time_big_font = 1.75;   // in em
 
+        // TODO: Evaluate relative units to hopefully get scaling out of the box
         let mut bars = Group::new();
+        let mut price_tags = Group::new();
+        let mut times = Group::new()
+            .set("font-size", "1em");
         for (idx, price) in prices.iter().enumerate() {
             let scaled_price = map_range(*price, floor, ceil, 0.0, bottom as f32);
             // xcoord := p.x + (p.width-p.w) + idx*int(interval)
-            let x_coord = (self.x as f32) + (idx as f32) * interval;
+            let x_coord = (self.x as f32) + (self.width - self.view_width) as f32 + (idx as f32) * interval;
             bars = bars.add(
                 Rectangle::new()
                 .set("x", x_coord)
@@ -51,17 +60,33 @@ impl Graph {
                 .set("height", scaled_price)
                 .set("width", barwidth as u32)
             );
+            // TODO: adjust the alignment of the text over the bars
+            // look at css text-anchor middle and dominant baseline
+            price_tags = price_tags.add(
+                Text::new(format!("{:.1}", 100. * price))
+                .set("x", x_coord + barwidth / 2.0)
+                .set("y", bottom as f32 - scaled_price - 10.)
+            );
+            let mut time = Text::new(idx.to_string())
+                .set("x", x_coord + (barwidth / 2.0))
+                .set("y", if idx %3 == 0 { bottom + 36 } else { bottom + 31 });
+            if idx % 3 == 0 {
+                time = time.set("font-size", format!("{}em", time_big_font));
+            }
+            times = times.add(time);
         }
 
         let outer_group = Group::new()
             .set("fill", "lightgray")
             .set("stroke", "black")
-            .add(bars);
+            .add(bars)
+            .add(price_tags)
+            .add(times);
 
         let doc = svg::Document::new()
             // TODO: make the viewbox dynamic, tigraph uses 1100 here
             .set("preserveAspectRatio", String::from("xMaxYMin"))
-            .set("viewBox", (0, 0, 1650, 1200)) // viewbox mapped to the size of the svg elem
+            .set("viewBox", (0, 0, self.view_width, self.view_height)) // viewbox mapped to the size of the svg elem
             .set("height", self.height)
             .set("width", self.width) // height in user coordinate system
             // TODO: make an enum for the aspect ratios
