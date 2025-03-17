@@ -1,6 +1,7 @@
 use std::io::Write;
 use svg::node::element::Group;
 use svg::node::element::{Rectangle, Text, Line};
+use svg::Node;
 pub struct Graph {
     pub x: u32,
     pub y: u32,
@@ -8,17 +9,20 @@ pub struct Graph {
     pub height: u32,
     pub view_width: u32,
     pub view_height: u32,
+    pub highlighted: usize,
 }
 
 impl Graph {
-    pub fn new() -> Self {
+    // TODO: add flag for daylight savings
+    pub fn new(highlight: usize) -> Self {
         Self {
             x: 0,
             y: 0,
-            width: 1650,
+            width: 1920, 
             height: 1200,
-            view_width: 1650,
-            view_height: 1200,
+            view_width: 1920, // these dimensions should match the dimensions the plot takes up
+            view_height: 1200, // on screenn
+            highlighted: highlight,
         }
     }
     pub fn plot<W: Write>(&self, writer: W, prices: &Vec<f32>) -> Result<(), std::io::Error> {
@@ -89,7 +93,7 @@ impl Graph {
             let line_height = map_range(floor + idx as f32 * step, floor as f32, ceil as f32, self.y as f32, bottom as f32);
             help_lines = help_lines.add(
                 Line::new()
-                    .set("x1", self.x + (self.width - self.view_width) / 2)
+                    .set("x1", self.x + (self.width - self.view_width) / 2 + margin_left as u32)
                     .set("y1", bottom as f32 - line_height)
                     .set("x2", self.x + self.view_width - (self.width - self.view_width) / 2 - margin_right as u32)
                     .set("y2", bottom as f32 - line_height)
