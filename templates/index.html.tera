@@ -18,8 +18,8 @@
 			<div class="infobar-item">
 				<div class="switcher-bar">
 					<form name="content-select" target="SiteContent">
-						<button formaction="/graph/today">Heute</button>
-						<button formaction="/graph/tomorrow">Morgen</button>
+						<button formaction="/graph/today" class="switcher-item">Heute</button>
+						<button formaction="/graph/tomorrow" class="switcher-item">Morgen</button>
 					</form>
 				</div>
 			</div>
