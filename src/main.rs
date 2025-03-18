@@ -1,4 +1,4 @@
-use chrono::{self, Duration, Timelike, Utc};
+use chrono::{self, Duration, Timelike};
 use dotenv;
 use rocket::State;
 use rocket::fs::{FileServer, relative};
@@ -14,8 +14,8 @@ use tigrust::tibber_api::{Prices, TibberAPI};
 #[get("/current_price", format = "text/html")]
 async fn current_price(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
     // TOOD: See if current_price template and current_time template could just be one
-    let now = Utc::now();
-    let hour_delta = now.with_minute(0).unwrap().with_second(0).unwrap() + Duration::hours(1) - now;
+    let now = chrono::Local::now();
+    let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
     let prices = prices_by_day(Days::TODAY, tapi, cache).await.unwrap();
     Template::render(
         "current_price",
@@ -74,8 +74,8 @@ async fn prices_by_day(
 
 #[get("/graph/<day>")]
 async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
-    let now = Utc::now();
-    let hour_delta = now.with_minute(0).unwrap().with_second(0).unwrap() + Duration::hours(1) - now;
+    let now = chrono::Local::now();
+    let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
     let plot = match prices_by_day(day, tapi, cache).await {
         None => String::from(format!("prices for {} not available", day)),
         Some(prices) => {
@@ -94,7 +94,7 @@ async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Price
 
 #[get("/time")]
 fn current_time() -> Template {
-    let now = Utc::now();
+    let now = chrono::Local::now();
     let minute_delta = now.with_second(0).unwrap() + Duration::minutes(1) - now;
     Template::render(
         "time",
@@ -104,7 +104,7 @@ fn current_time() -> Template {
 
 #[get("/")]
 async fn index() -> Template {
-    let now = Utc::now();
+    let now = chrono::Local::now();
     let tomorrow_delta = now.with_hour(0).unwrap() + Duration::days(1) - now;
     Template::render(
         "index",
