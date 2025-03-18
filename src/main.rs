@@ -8,6 +8,7 @@ use rocket_dyn_templates::{Template, context};
 use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
+use tigrust::meteo::{MeteoAPI, Query, Options};
 use tigrust::plot::Graph;
 use tigrust::tibber_api::{Prices, TibberAPI};
 
@@ -102,6 +103,21 @@ fn current_time() -> Template {
     )
 }
 
+#[get("/weather")]
+async fn weather() -> String {
+    let query = Query::new()
+        .with(Options::LatLong(48.165318, 11.754293))
+        .with(Options::Hourly(vec![
+            String::from("temperature_2m"),
+            String::from("precipitation_probability"),
+            String::from("sunshine_duration"),
+        ]));
+    println!("weather query: {}", &query);
+    let weather_api = MeteoAPI::new();
+    let _ = weather_api.do_query(&query).await;
+    String::from("weathering now!")
+}
+
 #[get("/")]
 async fn index() -> Template {
     let now = chrono::Local::now();
@@ -127,7 +143,7 @@ async fn main() -> Result<(), rocket::Error> {
     let _rocket = rocket::build()
         .attach(Template::fairing())
         .mount("/", routes![current_time, current_price, graph, index])
-        .mount("/api/", routes![prices])
+        .mount("/api/", routes![prices, weather])
         .manage(tapi)
         .manage(cache)
         .mount("/static", FileServer::from(relative!("static")))
