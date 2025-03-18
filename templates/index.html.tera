@@ -5,25 +5,28 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 		<link rel="stylesheet" type="text/css" href="/static/css/styles.css">
+		<meta http-equiv="refresh" content="{{ refresh_rate }}">
 	</head>
 	<body>
 		<div class="infobar">
 			<div class="infobar-item">
+				<iframe src="/time" scrolling="no" frameborder="0" name="CurrentTime"></iframe>
 			</div>
 			<div class="infobar-item">
+				<iframe src="/current_price" scrolling="no" frameborder="0" name="CurrentPrice"></iframe>
 			</div>
 			<div class="infobar-item">
 				<div class="switcher-bar">
 					<form name="content-select" target="SiteContent">
-						<button formaction="graph/today">Heute</button>
-						<button formaction="graph/tomorrow">Morgen</button>
+						<button formaction="/graph/today">Heute</button>
+						<button formaction="/graph/tomorrow">Morgen</button>
 					</form>
 				</div>
 			</div>
 		</div>
 		<hr />
 		<div class="site-content">
-			<iframe src="graph/today" id="display" scrolling="no" frameborder="0" name="SiteContent">
+			<iframe src="/graph/today" id="display" scrolling="no" frameborder="0" name="SiteContent"></iframe>
 		</div>
 	</body>
 </html>

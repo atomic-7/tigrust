@@ -30,6 +30,14 @@ hr {
 	height: min(15vh, 150px);
 }
 
+.infobar-item {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	width: 100%;
+	height: 100%;
+}
+
 .site-content {
 	flex: 0 7 100%;
 	display: flex;

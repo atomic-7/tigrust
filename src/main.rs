@@ -1,32 +1,28 @@
-use chrono::{self, Timelike};
+use chrono::{self, Duration, Timelike, Utc};
 use dotenv;
 use rocket::State;
+use rocket::fs::{FileServer, relative};
 use rocket::serde::json::Json;
-use rocket::fs::{relative, FileServer};
-use rocket::tokio::time::{Duration, sleep};
-use rocket::{get, put, routes};
+use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
 use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
-use tigrust::tibber_api::{Prices, TibberAPI};
 use tigrust::plot::Graph;
+use tigrust::tibber_api::{Prices, TibberAPI};
 
-
-// route handlers can be async functions
-// parameters are specified with <> brackets
-#[get("/delay/<seconds>")]
-async fn delay(seconds: u64) -> String {
-    sleep(Duration::from_secs(seconds)).await;
-    format!("Waited for {} seconds", seconds)
+#[get("/current_price", format = "text/html")]
+async fn current_price(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
+    // TOOD: See if current_price template and current_time template could just be one
+    let now = Utc::now();
+    let hour_delta = now.with_minute(0).unwrap().with_second(0).unwrap() + Duration::hours(1) - now;
+    let prices = prices_by_day(Days::TODAY, tapi, cache).await.unwrap();
+    Template::render(
+        "current_price",
+        context! {refresh_rate: hour_delta.num_seconds(), price: format!("{:.1} ct", prices[now.hour() as usize] * 100.0 ) },
+    )
 }
 
-#[put("/store/<value>")]
-fn store(value: i32) -> String {
-    format!("stored your number({})!", value)
-}
-
-// fn graph_json(day: Days) -> Option<content::RawJson<String>> {
 // need to figure out how to route by accept header
 #[get("/prices/<day>", format = "application/json")]
 async fn prices(
@@ -35,13 +31,16 @@ async fn prices(
     cache: &State<Cache<Prices>>,
 ) -> Option<Json<Vec<f32>>> {
     if let Some(p) = prices_by_day(day, tapi, cache).await {
-        return Some(Json(p))
+        return Some(Json(p));
     }
     None
 }
 
-async fn prices_by_day(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Option<Vec<f32>> {
-
+async fn prices_by_day(
+    day: Days,
+    tapi: &State<TibberAPI<'_>>,
+    cache: &State<Cache<Prices>>,
+) -> Option<Vec<f32>> {
     let value_guard = cache.get_value();
     match value_guard {
         Ok(cached) => match cached.get(day) {
@@ -75,27 +74,42 @@ async fn prices_by_day(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cac
 
 #[get("/graph/<day>")]
 async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
+    let now = Utc::now();
+    let hour_delta = now.with_minute(0).unwrap().with_second(0).unwrap() + Duration::hours(1) - now;
     let plot = match prices_by_day(day, tapi, cache).await {
         None => String::from(format!("prices for {} not available", day)),
         Some(prices) => {
             let mut buf = Vec::new();
-            let current_hour : usize = chrono::offset::Local::now().hour().try_into().unwrap();
+            let current_hour: usize = now.hour().try_into().unwrap();
             let graph = Graph::new(current_hour);
             let _ = graph.plot(Box::new(&mut buf), &prices);
             from_utf8(buf.as_slice()).unwrap().to_string()
         }
     };
-    Template::render("graph", context!{ graph: plot, refresh_rate: 3600})
+    Template::render(
+        "graph",
+        context! { graph: plot, refresh_rate: hour_delta.num_seconds()},
+    )
 }
 
 #[get("/time")]
-fn current_time() -> String {
-    format!("{}", chrono::offset::Local::now().format("%H:%M"))
+fn current_time() -> Template {
+    let now = Utc::now();
+    let minute_delta = now.with_second(0).unwrap() + Duration::minutes(1) - now;
+    Template::render(
+        "time",
+        context! {time: format!("{}", chrono::offset::Local::now().format("%H:%M")), refresh_rate: minute_delta.num_seconds()},
+    )
 }
 
 #[get("/")]
 async fn index() -> Template {
-    Template::render("index", context!{time: current_time()})
+    let now = Utc::now();
+    let tomorrow_delta = now.with_hour(0).unwrap() + Duration::days(1) - now;
+    Template::render(
+        "index",
+        context! {refresh_rate: tomorrow_delta.num_seconds()},
+    )
 }
 
 // rocket::main launches the tokio runtime, if this is not desired leave it out and start the
@@ -112,7 +126,7 @@ async fn main() -> Result<(), rocket::Error> {
 
     let _rocket = rocket::build()
         .attach(Template::fairing())
-        .mount("/", routes![index, delay, graph, current_time, store])
+        .mount("/", routes![current_time, current_price, graph, index])
         .mount("/api/", routes![prices])
         .manage(tapi)
         .manage(cache)
