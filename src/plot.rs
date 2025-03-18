@@ -1,7 +1,6 @@
 use std::io::Write;
 use svg::node::element::Group;
 use svg::node::element::{Rectangle, Text, Line};
-use svg::Node;
 pub struct Graph {
     pub x: u32,
     pub y: u32,
@@ -59,13 +58,17 @@ impl Graph {
             let scaled_price = map_range(*price, floor, ceil, 0.0, bottom as f32);
             // xcoord := p.x + (p.width-p.w) + idx*int(interval)
             let x_coord = margin_left + (self.width - self.view_width) as f32 + (idx as f32) * interval;
-            bars = bars.add(
+            let mut bar = 
                 Rectangle::new()
                 .set("x", x_coord)
                 .set("y", (bottom as f32 - scaled_price) as u32)
                 .set("height", scaled_price)
-                .set("width", barwidth as u32)
-            );
+                .set("width", barwidth as u32);
+            if idx == self.highlighted {
+                bar = bar.set("fill", "black");
+            }
+
+            bars = bars.add(bar);
             // TODO: adjust the alignment of the text over the bars
             // look at css text-anchor middle and dominant baseline
             price_tags = price_tags.add(

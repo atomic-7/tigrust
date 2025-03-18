@@ -1,4 +1,4 @@
-use chrono;
+use chrono::{self, Timelike};
 use dotenv;
 use rocket::State;
 use rocket::serde::json::Json;
@@ -79,7 +79,8 @@ async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Price
         None => String::from(format!("prices for {} not available", day)),
         Some(prices) => {
             let mut buf = Vec::new();
-            let graph = Graph::new();
+            let current_hour : usize = chrono::offset::Local::now().hour().try_into().unwrap();
+            let graph = Graph::new(current_hour);
             let _ = graph.plot(Box::new(&mut buf), &prices);
             from_utf8(buf.as_slice()).unwrap().to_string()
         }
