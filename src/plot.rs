@@ -57,7 +57,7 @@ impl Graph {
         for (idx, price) in prices.iter().enumerate() {
             let scaled_price = map_range(*price, floor, ceil, 0.0, bottom as f32);
             // xcoord := p.x + (p.width-p.w) + idx*int(interval)
-            let x_coord = margin_left + (self.width - self.view_width) as f32 + (idx as f32) * interval;
+            let x_coord = margin_left + (margin_left / 2.) +  (self.width - self.view_width) as f32 + (idx as f32) * interval;
             let mut bar = 
                 Rectangle::new()
                 .set("x", x_coord)
