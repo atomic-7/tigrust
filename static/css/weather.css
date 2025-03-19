@@ -1,0 +1,38 @@
+body {
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+#forecast-today {
+	flex: 0 6 100%;
+	display: flex;
+	flex-direction: row;
+	justify-content: center;
+	align-items:center;
+}
+
+hr {
+	border-top: 2px solid black;
+	width: 95%;
+}
+
+#forecasts {
+	flex: 0 4 auto;
+	display: flex;
+	flex-direction: row;
+	justify-content: space-around;
+	align-items: center;
+}
+
+.forecast-small {
+	background: red;
+	width: 100%;
+	height: 15em;
+}
+
+:not(:last-child) {
+	border-right: 2px solid black;
+}

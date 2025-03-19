@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Weather</title>
+		<meta charset="UTF-8">
+		<meta http-equiv="refresh" content="{{ refresh_rate }}">
+		<link rel="stylesheet" type="text/css" href="/static/css/weather.css">
+	</head>
+	<body>
+		<div id="forecast-today"></div>
+			<div class="day-section">
+				<div class="wc-icon">{{wc_icon_1}}</div>
+				<p><span>°C</span>{{temp_sec_1}}</p>
+				<p><span>%</span>{{rain_sec_1}}</p>
+			</div>
+		<hr>
+		<div id="forecasts">
+			<div id="tomorrow" class="forecast-small"></div>
+			<div id="day-after-tomorrow" class="forecast-small"></div>
+			<div id="faraway" class="forecast-small"></div>
+		</div>
+	</body>
+</html>

@@ -1,4 +1,4 @@
-use chrono::{self, Duration, Local, Timelike, Utc};
+use chrono::{self, Duration, Timelike};
 use dotenv;
 use rocket::State;
 use rocket::fs::{FileServer, relative};
@@ -141,7 +141,7 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         }
     };
     println!("{}", result);
-    Template::render("weather", context!{ refresh_rate: 3600 })
+    Template::render("weather", context!{ refresh_rate: 3600, wc_icon_1: "weather code", temp_sec_1: 15, rain_sec_1: 20 })
 }
 
 #[get("/")]
