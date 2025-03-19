@@ -1,10 +1,11 @@
-use chrono::{self, Duration, Timelike};
+use chrono::{self, Duration, Local, Timelike, Utc};
 use dotenv;
 use rocket::State;
 use rocket::fs::{FileServer, relative};
 use rocket::serde::json::Json;
 use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
+use serde::Deserialize;
 use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
@@ -103,6 +104,23 @@ fn current_time() -> Template {
     )
 }
 
+#[derive(Deserialize)]
+struct HourlyData {
+    // this seems to cause proplems while deserializing, despite the docs
+    // saying that DateTime has support for deserializing from ISO8601 via RFC339 parsing
+    // https://docs.rs/chrono/latest/chrono/serde/index.html
+    // 2025-03-24T20:00
+    // time: Vec<chrono::DateTime<Utc>>,    
+    temperature_2m: Vec<f32>,
+    precipitation_probability: Vec<f32>,
+    sunshine_duration: Vec<f32>,
+}
+
+#[derive(Deserialize)]
+struct QueryResponse {
+   hourly: HourlyData, 
+}
+
 #[get("/weather")]
 async fn weather() -> String {
     let query = Query::new()
@@ -114,8 +132,15 @@ async fn weather() -> String {
         ]));
     println!("weather query: {}", &query);
     let weather_api = MeteoAPI::new();
-    let _ = weather_api.do_query(&query).await;
-    String::from("weathering now!")
+    match weather_api.do_query::<QueryResponse>(&query).await {
+        Err(e) => {
+            eprintln!("failed to get weather info {}", e);
+            String::from("request failed")
+        }
+        Ok(res) => {
+            String::from(format!("weathering now! {}", res.hourly.temperature_2m[0]))
+        }
+    }
 }
 
 #[get("/")]

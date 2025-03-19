@@ -1,13 +1,12 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{self, Display};
-use std::io::Read;
 use std::sync::Arc;
 
 use http_body_util::{BodyExt, Empty};
 use hyper::Request;
 use hyper::body::{Buf, Bytes};
 use hyper_util::rt::TokioIo;
+use serde::de::DeserializeOwned;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::pki_types::ServerName;
@@ -34,10 +33,10 @@ impl<'a> MeteoAPI<'a> {
         }
     }
 
-    pub async fn do_query(
+    pub async fn do_query<T: DeserializeOwned>(
         &self,
         query: &Query,
-    ) -> Result<HashMap<String, String>, Box<dyn Error + Send + Sync>> {
+    ) -> Result<T, Box<dyn Error + Send + Sync>> {
         let url: hyper::Uri = API.parse().unwrap();
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
@@ -65,11 +64,12 @@ impl<'a> MeteoAPI<'a> {
             .body(Empty::<Bytes>::new())?;
         let res = sender.send_request(req).await?;
         let body = res.collect().await?.aggregate();
-        let mut weather_info = String::new();
-        body.reader().read_to_string(&mut weather_info)?;
-        println!("weather response: {}", weather_info);
+        // let mut weather_info = String::new();
+        // body.reader().read_to_string(&mut weather_info)?;
+        // println!("weather response: {}", weather_info);
 
-        let result = HashMap::new();
+
+        let result: T = serde_json::from_reader(body.reader())?;
         Ok(result)
     }
 }
@@ -99,7 +99,7 @@ impl Display for Query {
         }
         write!(f, "{}", self.options.first().unwrap())?;
         for opt in self.options[1..].iter() {
-            write!(f, "{}", opt)?;
+            write!(f, "&{}", opt)?;
         }
         Ok(())
     }
@@ -119,7 +119,7 @@ pub enum Options {
 impl Display for Options {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::LatLong(lat, long) => write!(f, "latitude={}&longitude{}", lat, long),
+            Self::LatLong(lat, long) => write!(f, "latitude={}&longitude={}", lat, long),
             Self::Hourly(vars) => write!(f, "hourly={}", vars.join(",")),
             Self::Daily(vars) => write!(f, "daily={}", vars.join(",")),
             Self::Current(vars) => write!(f, "current={}", vars.join(",")),
