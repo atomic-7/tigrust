@@ -10,7 +10,7 @@ use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::meteo::{MeteoAPI, Query, Options};
-use tigrust::plot::Graph;
+use tigrust::plot::prices::Graph;
 use tigrust::tibber_api::{Prices, TibberAPI};
 
 #[get("/current_price", format = "text/html")]
@@ -122,7 +122,7 @@ struct QueryResponse {
 }
 
 #[get("/weather")]
-async fn weather() -> String {
+async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
     let query = Query::new()
         .with(Options::LatLong(48.165318, 11.754293))
         .with(Options::Hourly(vec![
@@ -131,8 +131,7 @@ async fn weather() -> String {
             String::from("sunshine_duration"),
         ]));
     println!("weather query: {}", &query);
-    let weather_api = MeteoAPI::new();
-    match weather_api.do_query::<QueryResponse>(&query).await {
+    let result = match weather_api.do_query::<QueryResponse>(&query).await {
         Err(e) => {
             eprintln!("failed to get weather info {}", e);
             String::from("request failed")
@@ -140,7 +139,9 @@ async fn weather() -> String {
         Ok(res) => {
             String::from(format!("weathering now! {}", res.hourly.temperature_2m[0]))
         }
-    }
+    };
+    println!("{}", result);
+    Template::render("weather", context!{ refresh_rate: 3600 })
 }
 
 #[get("/")]
@@ -164,6 +165,8 @@ async fn main() -> Result<(), rocket::Error> {
     let prices = tapi.get_prices().await.unwrap();
     let cache: Cache<Prices> = Cache::new(prices, 36000);
     // cache.debug_expire_cache();
+    
+    let weather_api = MeteoAPI::new();
 
     let _rocket = rocket::build()
         .attach(Template::fairing())
@@ -171,6 +174,7 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/api/", routes![prices, weather])
         .manage(tapi)
         .manage(cache)
+        .manage(weather_api)
         .mount("/static", FileServer::from(relative!("static")))
         .launch()
         .await?;
