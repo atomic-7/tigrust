@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 # measure times
-chrono = "0.4.40"
+chrono = { version = "0.4.40", features = ["serde"]}
 # http requests
 hyper = { version = "1", features = ["full"]}
 hyper-util = { version = "0.1", features = ["full"]}
