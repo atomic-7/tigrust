@@ -20,6 +20,7 @@
 					<form name="content-select" target="SiteContent">
 						<button formaction="/graph/today" class="switcher-item">Heute</button>
 						<button formaction="/graph/tomorrow" class="switcher-item">Morgen</button>
+						<button formaction="/weather" class="switcher-item">Wetter</button>
 					</form>
 				</div>
 			</div>

@@ -5,11 +5,11 @@ use rocket::fs::{FileServer, relative};
 use rocket::serde::json::Json;
 use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
-use tigrust::meteo::{MeteoAPI, Query, Options};
+use tigrust::meteo::{MeteoAPI, Options, Query};
 use tigrust::plot::prices::Graph;
 use tigrust::tibber_api::{Prices, TibberAPI};
 
@@ -110,7 +110,7 @@ struct HourlyData {
     // saying that DateTime has support for deserializing from ISO8601 via RFC339 parsing
     // https://docs.rs/chrono/latest/chrono/serde/index.html
     // 2025-03-24T20:00
-    // time: Vec<chrono::DateTime<Utc>>,    
+    // time: Vec<chrono::DateTime<Utc>>,
     temperature_2m: Vec<f32>,
     precipitation_probability: Vec<f32>,
     sunshine_duration: Vec<f32>,
@@ -118,7 +118,23 @@ struct HourlyData {
 
 #[derive(Deserialize)]
 struct QueryResponse {
-   hourly: HourlyData, 
+    hourly: HourlyData,
+}
+
+#[derive(Serialize)]
+struct DaySection {
+    icon: &'static str,
+    temperature: f32,
+    rain_percent: f32,
+}
+
+#[derive(Clone, Serialize)]
+struct FutureDay {
+    icon: String,
+    min_temp: f32,
+    max_temp: f32,
+    sun_hours: f32,
+    rain_percent: f32,
 }
 
 #[get("/weather")]
@@ -134,14 +150,55 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
     let result = match weather_api.do_query::<QueryResponse>(&query).await {
         Err(e) => {
             eprintln!("failed to get weather info {}", e);
-            String::from("request failed")
+            panic!("{}", e);
         }
-        Ok(res) => {
-            String::from(format!("weathering now! {}", res.hourly.temperature_2m[0]))
-        }
+        Ok(res) => res,
     };
-    println!("{}", result);
-    Template::render("weather", context!{ refresh_rate: 3600, wc_icon_1: "weather code", temp_sec_1: 15, rain_sec_1: 20 })
+    let temperatures: Vec<f32> = result
+        .hourly
+        .temperature_2m
+        .chunks(3)
+        .map(|c| (c[0] + c[1] + c[2]) / 3.0)
+        .collect();
+    let rain_percent: Vec<f32> = result.hourly.precipitation_probability[0..24]
+        .chunks(3)
+        .map(|p| (p[0] + p[1] + p[2]) / 3.0)
+        .collect();
+    let icons: Vec<&'static str> = temperatures[0..24]
+        .iter()
+        .map(|&t| {
+            if t <= 10.0 {
+                "cold"
+            } else if t <= 17.0 {
+                "ok"
+            } else {
+                "warm"
+            }
+        })
+        .collect();
+    let mut day_sections = Vec::new();
+    for idx in 0..8 {
+        day_sections.push(DaySection {
+            icon: icons[idx],
+            temperature: temperatures[idx],
+            rain_percent: rain_percent[idx],
+        });
+    }
+    let mut forecasts: Vec<FutureDay> = Vec::new();
+    let tomorrow = FutureDay {
+        icon: String::from("todo"),
+        min_temp: 5.0,
+        max_temp: 15.0,
+        sun_hours: 5.0,
+        rain_percent: 0.1,
+    };
+    forecasts.push(tomorrow.clone());
+    forecasts.push(tomorrow.clone());
+    forecasts.push(tomorrow.clone());
+    Template::render(
+        "weather",
+        context! { refresh_rate: 3600, day_sections: day_sections, days: forecasts },
+    )
 }
 
 #[get("/")]
@@ -165,13 +222,16 @@ async fn main() -> Result<(), rocket::Error> {
     let prices = tapi.get_prices().await.unwrap();
     let cache: Cache<Prices> = Cache::new(prices, 36000);
     // cache.debug_expire_cache();
-    
+
     let weather_api = MeteoAPI::new();
 
     let _rocket = rocket::build()
         .attach(Template::fairing())
-        .mount("/", routes![current_time, current_price, graph, index])
-        .mount("/api/", routes![prices, weather])
+        .mount(
+            "/",
+            routes![index, current_time, current_price, graph, weather],
+        )
+        .mount("/api/", routes![prices])
         .manage(tapi)
         .manage(cache)
         .manage(weather_api)
