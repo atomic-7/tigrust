@@ -73,4 +73,5 @@ impl WeatherCodes {
             _ => include_str!("../assets/weather_icons/action-unavailable.svg"),
         }
     }
+    //  TODO: make function to average weather codes?
 }

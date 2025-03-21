@@ -4,9 +4,10 @@ pub mod cache;
 pub mod meteo;
 pub mod plot;
 pub mod tibber_api;
+pub mod weathercodes;
 
 // TODO: check where the copy semantics make life easier
-#[derive(Copy,Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Days {
     TODAY,
     TOMORROW,
@@ -40,4 +41,3 @@ impl<'a> FromParam<'a> for Days {
         }
     }
 }
-

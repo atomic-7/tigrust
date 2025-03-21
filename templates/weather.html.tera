@@ -10,9 +10,9 @@
 		<div id="forecast-today">
 			{% for section in day_sections %}
 			<div class="day-section">
-				<div class="wc-icon">{{section.icon}}</div>
-				<p>{{section.temperature | round(precision=1)}}°C</p>
-				<p>{{section.rain_percent | round(precision=1)}}%</p>
+				<div class="wc-icon">{{ section.icon | safe }}</div>
+				<p>{{ section.temperature | round(precision=1) }}°C</p>
+				<p>{{ section.rain_percent | round(precision=1) }}%</p>
 			</div>
 			{% endfor %}
 		</div>
@@ -20,10 +20,10 @@
 		<div id="forecasts">
 			{% for day in days %}
 			<div id="day.name" class="forecast-small">
-				<div class="wc-icon">{{day.icon}}</div>
-				<p>{{day.min_temp | round(precision=1)}}°C - {{day.max_temp | round(precision=1)}}°C</p>
-				<p>{{day.sun_hours}}<span>*</span></p>
-				<p>{{day.rain_percent | round(precision=1)}}<span>%</span></p>
+				<div class="wc-icon">{{ day.icon | safe }}</div>
+				<p>{{ day.min_temp | round(precision=1) }}°C - {{ day.max_temp | round(precision=1) }}°C</p>
+				<p>{{ day.sun_hours }}*</p>
+				<p>{{ day.rain_percent | round(precision=1) }}%</p>
 			</div>
 			{% endfor %}
 		</div>

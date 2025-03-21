@@ -12,6 +12,7 @@ use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::meteo::{MeteoAPI, Options, Query};
 use tigrust::plot::prices::Graph;
 use tigrust::tibber_api::{Prices, TibberAPI};
+use tigrust::weathercodes::WeatherCodes;
 
 #[get("/current_price", format = "text/html")]
 async fn current_price(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
@@ -114,6 +115,7 @@ struct HourlyData {
     temperature_2m: Vec<f32>,
     precipitation_probability: Vec<f32>,
     sunshine_duration: Vec<f32>,
+    weathercode: Vec<u32>,
 }
 
 #[derive(Deserialize)]
@@ -130,7 +132,7 @@ struct DaySection {
 
 #[derive(Clone, Serialize)]
 struct FutureDay {
-    icon: String,
+    icon: &'static str,
     min_temp: f32,
     max_temp: f32,
     sun_hours: f32,
@@ -145,6 +147,7 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
             String::from("temperature_2m"),
             String::from("precipitation_probability"),
             String::from("sunshine_duration"),
+            String::from("weathercode"),
         ]));
     println!("weather query: {}", &query);
     let result = match weather_api.do_query::<QueryResponse>(&query).await {
@@ -164,17 +167,12 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         .chunks(3)
         .map(|p| (p[0] + p[1] + p[2]) / 3.0)
         .collect();
-    let icons: Vec<&'static str> = temperatures[0..24]
-        .iter()
-        .map(|&t| {
-            if t <= 10.0 {
-                "cold"
-            } else if t <= 17.0 {
-                "ok"
-            } else {
-                "warm"
-            }
-        })
+    // use weather codes to decide icons
+    // right now it only uses the first hour of everyt tripple
+    // TODO adjust icons so that the svg is actually centered
+    let icons: Vec<&'static str> = result.hourly.weathercode[0..24]
+        .chunks(3)
+        .map(|code| WeatherCodes::from_num(code[0]).to_icon())
         .collect();
     let mut day_sections = Vec::new();
     for idx in 0..8 {
@@ -186,7 +184,7 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
     }
     let mut forecasts: Vec<FutureDay> = Vec::new();
     let tomorrow = FutureDay {
-        icon: String::from("todo"),
+        icon: WeatherCodes::from_num(999).to_icon(),
         min_temp: 5.0,
         max_temp: 15.0,
         sun_hours: 5.0,

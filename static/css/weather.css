@@ -6,12 +6,21 @@ body {
 	height: 100%;
 }
 
+
+p {
+	font-size: 2.5rem;
+}
+
 #forecast-today {
 	flex: 0 6 100%;
 	display: flex;
 	flex-direction: row;
 	justify-content: space-evenly;
 	align-items:center;
+}
+.wc-icon > svg {
+	width: 3em;
+	height: 3em;
 }
 
 .day-section {
