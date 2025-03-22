@@ -22,7 +22,7 @@
 			<div id="day.name" class="forecast-small">
 				<div class="wc-icon">{{ day.icon | safe }}</div>
 				<p>{{ day.min_temp | round(precision=1) }}°C - {{ day.max_temp | round(precision=1) }}°C</p>
-				<p>{{ day.sun_hours }}*</p>
+				<p>{{ day.sun_hours | round(precision=1) }}h</p>
 				<p>{{ day.rain_percent | round(precision=1) }}%</p>
 			</div>
 			{% endfor %}

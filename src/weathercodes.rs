@@ -1,4 +1,5 @@
 use std::include_str;
+#[derive(Debug)]
 pub enum WeatherCodes {
     ClearSky,
     MainlyClear,
@@ -29,7 +30,7 @@ pub enum WeatherCodes {
     ThunderstormModerate,
     ThunderStormHailSlight,
     ThunderStormHailHeavy,
-    UnkownCode,
+    UnkownCode(u32),
 }
 
 impl WeatherCodes {
@@ -64,13 +65,25 @@ impl WeatherCodes {
             195 => Self::ThunderstormModerate, // not really parsable
             96 => Self::ThunderStormHailSlight,
             99 => Self::ThunderStormHailHeavy,
-            _ => Self::UnkownCode,
+            x => Self::UnkownCode(x),
         }
     }
     pub fn to_icon(&self) -> &'static str {
+        // TOOD: figure out what to do with night icons
         match self {
             Self::ClearSky => include_str!("../assets/weather_icons/weather-clear.svg"),
-            _ => include_str!("../assets/weather_icons/action-unavailable.svg"),
+            // TODO: Get a different icon for mainly clear
+            Self::MainlyClear => include_str!("../assets/weather_icons/weather-clear.svg"),
+            Self::PartlyCloudy => include_str!("../assets/weather_icons/weather-few-clouds.svg"),
+            Self::Overcast => include_str!("../assets/weather_icons/weather-overcast.svg"),
+            Self::DrizzleLight | Self::DrizzleModerate | Self::RainSlight => include_str!("../assets/weather_icons/weather-showers-scattered.svg"),
+            Self::RainModerate | Self::RainHeavy => include_str!("../assets/weather_icons/weather-showers.svg"),
+            Self::SnowSlight | Self::SnowModerate | Self::SnowHeavy => include_str!("../assets/weather_icons/weather-snow.svg"),
+            Self::ThunderstormSlight | Self::ThunderStormHailSlight | Self::ThunderStormHailHeavy => include_str!("../assets/weather_icons/weather-storm.svg"),
+            _ => {
+                println!("no icon for {:?}", self);
+                include_str!("../assets/weather_icons/action-unavailable.svg")
+            }
         }
     }
     //  TODO: make function to average weather codes?

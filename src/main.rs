@@ -105,6 +105,10 @@ fn current_time() -> Template {
     )
 }
 
+fn min_max(nums: &[f32]) -> (f32, f32) {
+    nums.iter().fold((f32::MAX, f32::MIN), |(amin, amax), x| (amin.min(*x), amax.max(*x)))
+}
+
 #[derive(Deserialize)]
 struct HourlyData {
     // this seems to cause proplems while deserializing, despite the docs
@@ -157,9 +161,10 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         }
         Ok(res) => res,
     };
+    println!("len hourly {}", result.hourly.temperature_2m.len()); // default is 168
     let temperatures: Vec<f32> = result
         .hourly
-        .temperature_2m
+        .temperature_2m[0..24]
         .chunks(3)
         .map(|c| (c[0] + c[1] + c[2]) / 3.0)
         .collect();
@@ -167,9 +172,9 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         .chunks(3)
         .map(|p| (p[0] + p[1] + p[2]) / 3.0)
         .collect();
+    // TODO: Figure out when the day rolls over for the weather
     // use weather codes to decide icons
     // right now it only uses the first hour of everyt tripple
-    // TODO adjust icons so that the svg is actually centered
     let icons: Vec<&'static str> = result.hourly.weathercode[0..24]
         .chunks(3)
         .map(|code| WeatherCodes::from_num(code[0]).to_icon())
@@ -183,16 +188,19 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         });
     }
     let mut forecasts: Vec<FutureDay> = Vec::new();
-    let tomorrow = FutureDay {
-        icon: WeatherCodes::from_num(999).to_icon(),
-        min_temp: 5.0,
-        max_temp: 15.0,
-        sun_hours: 5.0,
-        rain_percent: 0.1,
-    };
-    forecasts.push(tomorrow.clone());
-    forecasts.push(tomorrow.clone());
-    forecasts.push(tomorrow.clone());
+    for idx in 0..3 {
+        let day_temps = &result.hourly.temperature_2m[(idx + 1)*24..(idx + 2)*24];
+        let (min_temp, max_temp) = min_max(day_temps);
+        let sun_hours :f32 =  result.hourly.sunshine_duration[(idx +1)*24..(idx + 2)*24].into_iter().sum();
+        forecasts.push(
+            FutureDay {
+                icon: WeatherCodes::from_num(999).to_icon(),
+                min_temp,
+                max_temp,
+                sun_hours: sun_hours / 3600.,
+                rain_percent:0.1,
+            });
+    }
     Template::render(
         "weather",
         context! { refresh_rate: 3600, day_sections: day_sections, days: forecasts },
