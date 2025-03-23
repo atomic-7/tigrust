@@ -18,6 +18,7 @@ p {
 	flex-direction: row;
 	justify-content: space-evenly;
 	align-items:center;
+	flex-wrap: wrap;
 }
 
 .wc-icon {
@@ -33,6 +34,7 @@ p {
 
 .day-section {
 	display: flex;
+	flex: 0 8%;
 	flex-direction: column;
 	justify-content: center;
 }

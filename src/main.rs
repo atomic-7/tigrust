@@ -164,23 +164,23 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
     println!("len hourly {}", result.hourly.temperature_2m.len()); // default is 168
     let temperatures: Vec<f32> = result
         .hourly
-        .temperature_2m[0..24]
-        .chunks(3)
-        .map(|c| (c[0] + c[1] + c[2]) / 3.0)
-        .collect();
-    let rain_percent: Vec<f32> = result.hourly.precipitation_probability[0..24]
-        .chunks(3)
-        .map(|p| (p[0] + p[1] + p[2]) / 3.0)
-        .collect();
+        .temperature_2m[0..24].to_vec();
+        // .chunks(3)
+        // .map(|c| (c[0] + c[1] + c[2]) / 3.0)
+        // .collect();
+    let rain_percent: Vec<f32> = result.hourly.precipitation_probability[0..24].to_vec();
+        // .chunks(3)
+        // .map(|p| (p[0] + p[1] + p[2]) / 3.0)
+        // .collect();
     // TODO: Figure out when the day rolls over for the weather
     // use weather codes to decide icons
     // right now it only uses the first hour of everyt tripple
-    let icons: Vec<&'static str> = result.hourly.weathercode[0..24]
-        .chunks(3)
-        .map(|code| WeatherCodes::from_num(code[0]).to_icon())
+    let icons: Vec<&'static str> = result.hourly.weathercode[0..24].iter()
+        // .chunks(3)
+        .map(|code| WeatherCodes::from_num(*code).to_icon())
         .collect();
     let mut day_sections = Vec::new();
-    for idx in 0..8 {
+    for idx in 0..rain_percent.len() {
         day_sections.push(DaySection {
             icon: icons[idx],
             temperature: temperatures[idx],
