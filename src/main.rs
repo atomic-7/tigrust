@@ -117,7 +117,7 @@ struct HourlyData {
     // 2025-03-24T20:00
     // time: Vec<chrono::DateTime<Utc>>,
     temperature_2m: Vec<f32>,
-    precipitation_probability: Vec<f32>,
+    precipitation: Vec<f32>,
     sunshine_duration: Vec<f32>,
     weathercode: Vec<u32>,
 }
@@ -131,7 +131,7 @@ struct QueryResponse {
 struct DaySection {
     icon: &'static str,
     temperature: f32,
-    rain_percent: f32,
+    rain_sum: f32,
 }
 
 #[derive(Clone, Serialize)]
@@ -140,7 +140,7 @@ struct FutureDay {
     min_temp: f32,
     max_temp: f32,
     sun_hours: f32,
-    rain_percent: f32,
+    rain_sum: f32,
 }
 
 #[get("/weather")]
@@ -149,7 +149,7 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         .with(Options::LatLong(48.165318, 11.754293))
         .with(Options::Hourly(vec![
             String::from("temperature_2m"),
-            String::from("precipitation_probability"),
+            String::from("precipitation"),
             String::from("sunshine_duration"),
             String::from("weathercode"),
         ]));
@@ -162,29 +162,30 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         Ok(res) => res,
     };
     println!("len hourly {}", result.hourly.temperature_2m.len()); // default is 168
-    let temperatures: Vec<f32> = result
+    let temperatures_avg: Vec<f32> = result
         .hourly
-        .temperature_2m[0..24].to_vec();
-        // .chunks(3)
-        // .map(|c| (c[0] + c[1] + c[2]) / 3.0)
-        // .collect();
-    let rain_percent: Vec<f32> = result.hourly.precipitation_probability[0..24].to_vec();
-        // .chunks(3)
-        // .map(|p| (p[0] + p[1] + p[2]) / 3.0)
-        // .collect();
+        .temperature_2m[0..24]
+        .chunks(3)
+        .map(|c| (c[0] + c[1] + c[2]) / 3.0)
+        .collect();
+    let rain_sums: Vec<f32> = result.hourly.precipitation[0..24]
+        .chunks(3)
+        .map(|p| p[0] + p[1] + p[2])
+        .collect();
     // TODO: Figure out when the day rolls over for the weather
     // use weather codes to decide icons
     // right now it only uses the first hour of everyt tripple
-    let icons: Vec<&'static str> = result.hourly.weathercode[0..24].iter()
-        // .chunks(3)
-        .map(|code| WeatherCodes::from_num(*code).to_icon())
+    // TODO: Figure out how to aggregate weathercodes
+    let icons: Vec<&'static str> = result.hourly.weathercode[0..24]
+        .chunks(3)
+        .map(|codes| WeatherCodes::from_num(codes[0]).to_icon())
         .collect();
     let mut day_sections = Vec::new();
-    for idx in 0..rain_percent.len() {
+    for idx in 0..rain_sums.len() {
         day_sections.push(DaySection {
             icon: icons[idx],
-            temperature: temperatures[idx],
-            rain_percent: rain_percent[idx],
+            temperature: temperatures_avg[idx],
+            rain_sum: rain_sums[idx],
         });
     }
     let mut forecasts: Vec<FutureDay> = Vec::new();
@@ -192,13 +193,14 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         let day_temps = &result.hourly.temperature_2m[(idx + 1)*24..(idx + 2)*24];
         let (min_temp, max_temp) = min_max(day_temps);
         let sun_hours :f32 =  result.hourly.sunshine_duration[(idx +1)*24..(idx + 2)*24].into_iter().sum();
+        let rain_sum = result.hourly.precipitation[(idx + 1) * 24..(idx + 2)*24].iter().sum();
         forecasts.push(
             FutureDay {
                 icon: WeatherCodes::from_num(999).to_icon(),
                 min_temp,
                 max_temp,
                 sun_hours: sun_hours / 3600.,
-                rain_percent:0.1,
+                rain_sum,
             });
     }
     Template::render(
