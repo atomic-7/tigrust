@@ -42,7 +42,10 @@ impl<'a> MeteoAPI<'a> {
         let port = url.port_u16().unwrap_or(443);
         let addr = format!("{}:{}", host, port);
         let stream = TcpStream::connect(addr).await?;
-        let tls_stream = self.tls_connector.connect(self.dns_name.to_owned(), stream).await?;
+        let tls_stream = self
+            .tls_connector
+            .connect(self.dns_name.to_owned(), stream)
+            .await?;
         let io = TokioIo::new(tls_stream);
 
         let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
@@ -67,7 +70,6 @@ impl<'a> MeteoAPI<'a> {
         // let mut weather_info = String::new();
         // body.reader().read_to_string(&mut weather_info)?;
         // println!("weather response: {}", weather_info);
-
 
         let result: T = serde_json::from_reader(body.reader())?;
         Ok(result)
@@ -95,7 +97,7 @@ impl Query {
 impl Display for Query {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.options.is_empty() {
-            return Ok(())
+            return Ok(());
         }
         write!(f, "{}", self.options.first().unwrap())?;
         for opt in self.options[1..].iter() {
@@ -114,6 +116,7 @@ pub enum Options {
     Current(Vec<String>),
     ForecastDays(u32),
     ForecastHours(u32),
+    Timezone(Timezone),
 }
 
 impl Display for Options {
@@ -125,6 +128,22 @@ impl Display for Options {
             Self::Current(vars) => write!(f, "current={}", vars.join(",")),
             Self::ForecastDays(num) => write!(f, "forecast_days={}", num),
             Self::ForecastHours(num) => write!(f, "forecast_hours={}", num),
+            Self::Timezone(tz) => write!(f, "timezone={}", tz),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Timezone {
+    Offset(i32),
+    Auto,
+}
+
+impl Display for Timezone {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Offset(offset) => write!(f, "{}", offset), // this might be incorrect
+            Self::Auto => write!(f, "auto"),
         }
     }
 }

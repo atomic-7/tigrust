@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::str::from_utf8;
 use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
-use tigrust::meteo::{MeteoAPI, Options, Query};
+use tigrust::meteo::{MeteoAPI, Options, Query, Timezone};
 use tigrust::plot::prices::Graph;
 use tigrust::tibber_api::{Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
@@ -105,10 +105,6 @@ fn current_time() -> Template {
     )
 }
 
-fn min_max(nums: &[f32]) -> (f32, f32) {
-    nums.iter().fold((f32::MAX, f32::MIN), |(amin, amax), x| (amin.min(*x), amax.max(*x)))
-}
-
 #[derive(Deserialize)]
 struct HourlyData {
     // this seems to cause proplems while deserializing, despite the docs
@@ -118,13 +114,22 @@ struct HourlyData {
     // time: Vec<chrono::DateTime<Utc>>,
     temperature_2m: Vec<f32>,
     precipitation: Vec<f32>,
-    sunshine_duration: Vec<f32>,
     weathercode: Vec<u32>,
+}
+
+#[derive(Deserialize)]
+struct DailyData {
+    weathercode: Vec<u32>,
+    precipitation_sum: Vec<f32>,
+    sunshine_duration: Vec<f32>,
+    temperature_2m_max: Vec<f32>,
+    temperature_2m_min: Vec<f32>,
 }
 
 #[derive(Deserialize)]
 struct QueryResponse {
     hourly: HourlyData,
+    daily: DailyData,
 }
 
 #[derive(Serialize)]
@@ -147,11 +152,19 @@ struct FutureDay {
 async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
     let query = Query::new()
         .with(Options::LatLong(48.165318, 11.754293))
+        .with(Options::Timezone(Timezone::Auto))
+        .with(Options::ForecastDays(3))
         .with(Options::Hourly(vec![
             String::from("temperature_2m"),
             String::from("precipitation"),
-            String::from("sunshine_duration"),
             String::from("weathercode"),
+        ]))
+        .with(Options::Daily(vec![
+            String::from("weathercode"),
+            String::from("precipitation_sum"),
+            String::from("sunshine_duration"),
+            String::from("temperature_2m_max"),
+            String::from("temperature_2m_min"),
         ]));
     println!("weather query: {}", &query);
     let result = match weather_api.do_query::<QueryResponse>(&query).await {
@@ -161,10 +174,7 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
         }
         Ok(res) => res,
     };
-    println!("len hourly {}", result.hourly.temperature_2m.len()); // default is 168
-    let temperatures_avg: Vec<f32> = result
-        .hourly
-        .temperature_2m[0..24]
+    let temperatures_avg: Vec<f32> = result.hourly.temperature_2m[0..24]
         .chunks(3)
         .map(|c| (c[0] + c[1] + c[2]) / 3.0)
         .collect();
@@ -190,18 +200,13 @@ async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
     }
     let mut forecasts: Vec<FutureDay> = Vec::new();
     for idx in 0..3 {
-        let day_temps = &result.hourly.temperature_2m[(idx + 1)*24..(idx + 2)*24];
-        let (min_temp, max_temp) = min_max(day_temps);
-        let sun_hours :f32 =  result.hourly.sunshine_duration[(idx +1)*24..(idx + 2)*24].into_iter().sum();
-        let rain_sum = result.hourly.precipitation[(idx + 1) * 24..(idx + 2)*24].iter().sum();
-        forecasts.push(
-            FutureDay {
-                icon: WeatherCodes::from_num(999).to_icon(),
-                min_temp,
-                max_temp,
-                sun_hours: sun_hours / 3600.,
-                rain_sum,
-            });
+        forecasts.push(FutureDay {
+            icon: WeatherCodes::from_num(result.daily.weathercode[idx]).to_icon(),
+            min_temp: result.daily.temperature_2m_min[idx],
+            max_temp: result.daily.temperature_2m_max[idx],
+            sun_hours: result.daily.sunshine_duration[idx] / 3600.,
+            rain_sum: result.daily.precipitation_sum[idx],
+        });
     }
     Template::render(
         "weather",
