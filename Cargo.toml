@@ -27,4 +27,5 @@ tokio-rustls = "0.26.2"
 rustls-platform-verifier = "0.3"
 svg = "0.18.0"
 ratatui = "0.29.0"
+color-eyre = "0.6.5"
 
