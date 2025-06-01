@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use ratatui::crossterm::event::{self, Event};
+use ratatui::widgets::BarChart;
 use ratatui::{DefaultTerminal, Frame};
 use serde::Deserialize;
 use tigrust::meteo::{MeteoAPI, Options, Query, Timezone};
@@ -27,18 +28,8 @@ struct HourlyData {
 }
 
 #[derive(Deserialize)]
-struct DailyData {
-    weathercode: Vec<u32>,
-    precipitation_sum: Vec<f32>,
-    sunshine_duration: Vec<f32>,
-    temperature_2m_max: Vec<f32>,
-    temperature_2m_min: Vec<f32>,
-}
-
-#[derive(Deserialize)]
 struct QueryResponse {
     hourly: HourlyData,
-    daily: DailyData,
 }
 
 async fn run(mut terminal: DefaultTerminal) -> Result<()> {
@@ -46,34 +37,35 @@ async fn run(mut terminal: DefaultTerminal) -> Result<()> {
     let query = Query::new()
         .with(Options::LatLong(48.165318, 11.754293))
         .with(Options::Timezone(Timezone::Auto))
-        .with(Options::ForecastDays(3))
+        .with(Options::ForecastDays(1))
         .with(Options::Hourly(vec![
             String::from("temperature_2m"),
             String::from("precipitation"),
             String::from("weathercode"),
-        ]))
-        .with(Options::Daily(vec![
-            String::from("weathercode"),
-            String::from("precipitation_sum"),
-            String::from("sunshine_duration"),
-            String::from("temperature_2m_max"),
-            String::from("temperature_2m_min"),
         ]));
-    let _response = match api.do_query::<QueryResponse>(&query).await {
+    let response = match api.do_query::<QueryResponse>(&query).await {
         Err(e) => {
             eprintln!("failed to get weather info: {:?}", e);
             panic!("something went wrong");
         }
         Ok(res) => res,
     };
+    let idxs = (0..response.hourly.temperature_2m.len()).map(|idx| format!("B{:?}", idx));
+    let data = response
+        .hourly
+        .temperature_2m
+        .iter()
+        .zip(idxs)
+        .map(|(&t, i)| (i, t as u64))
+        .collect::<Vec<_>>();
+    let barchart = BarChart::default().data(&data);
     loop {
-        terminal.draw(render)?;
+        terminal.draw(|frame: &mut Frame| {
+            frame.render_widget(&barchart, frame.area());
+            // frame.render_widget("hello world", frame.area());
+        })?;
         if matches!(event::read()?, Event::Key(_)) {
             break Ok(());
         }
     }
-}
-
-fn render(frame: &mut Frame) {
-    frame.render_widget("hello world", frame.area());
 }
