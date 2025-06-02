@@ -1,8 +1,8 @@
-use crate::Days;
 use graphql_client::{GraphQLQuery, Response};
 use http_body_util::BodyExt;
 use hyper::{Request, body::Buf};
 use hyper_util::rt::TokioIo;
+use rocket::request::FromParam;
 use serde::Deserialize;
 use std::fmt::{self, Display};
 use std::sync::Arc;
@@ -162,6 +162,42 @@ impl Prices {
         match day {
             Days::TODAY => self.today = Some(prices),
             Days::TOMORROW => self.tomorrow = Some(prices),
+        }
+    }
+}
+
+// TODO: check where the copy semantics make life easier
+#[derive(Copy, Clone, Debug)]
+pub enum Days {
+    TODAY,
+    TOMORROW,
+}
+
+impl Days {
+    pub fn other(&self) -> Self {
+        match self {
+            Self::TODAY => Self::TOMORROW,
+            Self::TOMORROW => Self::TODAY,
+        }
+    }
+}
+
+impl Display for Days {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TODAY => write!(f, "today"),
+            Self::TOMORROW => write!(f, "tomorrow"),
+        }
+    }
+}
+
+impl<'a> FromParam<'a> for Days {
+    type Error = &'a str;
+    fn from_param(param: &'a str) -> Result<Self, Self::Error> {
+        match param {
+            "today" => Ok(Self::TODAY),
+            "tomorrow" => Ok(Self::TOMORROW),
+            _ => Err(param),
         }
     }
 }

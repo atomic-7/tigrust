@@ -7,11 +7,10 @@ use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
 use serde::{Deserialize, Serialize};
 use std::str::from_utf8;
-use tigrust::Days;
 use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::meteo::{MeteoAPI, Options, Query, Timezone};
 use tigrust::plot::prices::Graph;
-use tigrust::tibber_api::{Prices, TibberAPI};
+use tigrust::tibber_api::{Days, Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
 
 #[get("/current_price", format = "text/html")]
@@ -238,7 +237,7 @@ async fn main() -> Result<(), rocket::Error> {
 
     let weather_api = MeteoAPI::new();
 
-    let _rocket = rocket::build()
+    let rocket = rocket::build()
         .attach(Template::fairing())
         .mount(
             "/",
@@ -248,9 +247,10 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(tapi)
         .manage(cache)
         .manage(weather_api)
-        .mount("/static", FileServer::from(relative!("static")))
-        .launch()
-        .await?;
+        .mount("/static", FileServer::from(relative!("static")));
+
+    // use tokio::select! with a join handle from spawning the ssh serv
+    rocket.launch().await?;
     Ok(())
 }
 
