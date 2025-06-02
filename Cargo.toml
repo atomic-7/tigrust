@@ -26,6 +26,11 @@ tokio-rustls = "0.26.2"
 # Check tls certs againts certs on the platform
 rustls-platform-verifier = "0.3"
 svg = "0.18.0"
+# tui lib
 ratatui = "0.29.0"
+# pretty printing for errors, part of the ratatui setup
 color-eyre = "0.6.5"
-
+# ssh server
+russh = "0.52.1"
+# error type in tibtui to fit with russh errors
+anyhow = "1.0.98"
