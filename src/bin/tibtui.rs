@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use color_eyre::Result;
-use ratatui::crossterm::event::{self, Event};
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
 use ratatui::text::Text;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Clear};
-use ratatui::{DefaultTerminal, Frame, Terminal, TerminalOptions, Viewport};
+use ratatui::{Terminal, TerminalOptions, Viewport};
 use russh::keys::ssh_key::rand_core::OsRng;
 use russh::keys::ssh_key::{self, PublicKey};
 use russh::server::*;
@@ -24,9 +23,8 @@ type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
 async fn main() -> Result<()> {
     // color_eyre::install()?;
     // let terminal = ratatui::init();
-    // let result = run(terminal);
-    // ratatui::restore();
     // result.await
+    println!("running on 0.0.0.0:2222");
     let mut server = AppServer::new().await;
     server.run().await.expect("failed running server");
     Ok(())
@@ -42,49 +40,6 @@ struct HourlyData {
 #[derive(Deserialize)]
 struct QueryResponse {
     hourly: HourlyData,
-}
-
-async fn run(mut terminal: DefaultTerminal) -> Result<()> {
-    let api = MeteoAPI::new();
-    let query = Query::new()
-        .with(Options::LatLong(48.165318, 11.754293))
-        .with(Options::Timezone(Timezone::Auto))
-        .with(Options::ForecastDays(1))
-        .with(Options::Hourly(vec![
-            String::from("temperature_2m"),
-            // String::from("precipitation"),
-            // String::from("weathercode"),
-        ]));
-    let response = match api.do_query::<QueryResponse>(&query).await {
-        Err(e) => {
-            eprintln!("failed to get weather info: {:?}", e);
-            panic!("something went wrong");
-        }
-        Ok(res) => res,
-    };
-    let bars = BarGroup::default().bars(
-        response
-            .hourly
-            .temperature_2m
-            .iter()
-            .enumerate()
-            .map(|(i, &t)| {
-                Bar::default()
-                    .value(t as u64)
-                    .label(format!("B{}", i).into())
-            })
-            .collect::<Vec<_>>()
-            .as_slice(),
-    );
-    let barchart = BarChart::default().data(bars);
-    loop {
-        terminal.draw(|frame: &mut Frame| {
-            frame.render_widget(&barchart, frame.area());
-        })?;
-        if matches!(event::read()?, Event::Key(_)) {
-            break Ok(());
-        }
-    }
 }
 
 // server stuff
@@ -149,7 +104,7 @@ struct AppServer {
     // save each clients app state seperately
     clients: Arc<Mutex<HashMap<usize, (SshTerminal, App)>>>,
     id: usize,
-    data: BarChart<'static>,    // this feels incorrect
+    data: BarChart<'static>, // TODO: this feels incorrect
 }
 
 impl AppServer {
@@ -195,6 +150,8 @@ impl AppServer {
 
     pub async fn run(&mut self) -> Result<(), std::io::Error> {
         let clients = self.clients.clone();
+        // this needs to be changed
+        let data = self.data.clone();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -209,7 +166,7 @@ impl AppServer {
                             let area = f.area();
                             f.render_widget(Clear, area);
                             f.render_widget(Text::from(format!("{}", app.counter)), area);
-                            // f.render_widget(data, area);
+                            f.render_widget(&data, area);
                         })
                         .unwrap();
                 }
@@ -248,7 +205,7 @@ impl Drop for AppServer {
 }
 
 impl Server for AppServer {
-    type Handler = Self;    // handler needs to satisfy static lifetime
+    type Handler = Self; // handler needs to satisfy static lifetime
     fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
         let s = self.clone();
         self.id += 1;
@@ -273,11 +230,20 @@ impl Handler for AppServer {
         let app = App::new();
         let mut clients = self.clients.lock().await;
         clients.insert(self.id, (terminal, app));
+        println!("accepted session");
         Ok(true)
     }
 
-    // Just accept all keys, usually keys would be checked here
-    async fn auth_publickey(&mut self, _: &str, _: &PublicKey) -> Result<Auth, Self::Error> {
+    // Just accept all incoming connections with all auth methods for now
+    async fn auth_none(&mut self, user: &str) -> std::result::Result<Auth, Self::Error> {
+        println!("got connection from {}", user);
+        Ok(Auth::Accept)
+    }
+    async fn auth_password(&mut self, _: &str, _: &str) -> std::result::Result<Auth, Self::Error> {
+        Ok(Auth::Accept)
+    }
+    async fn auth_publickey(&mut self, _: &str, pubkey: &PublicKey) -> Result<Auth, Self::Error> {
+        dbg!(pubkey);
         Ok(Auth::Accept)
     }
 
