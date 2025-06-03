@@ -8,9 +8,9 @@ use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 use std::str::from_utf8;
 use tigrust::cache::{Cache, Error as CacheError};
-use tigrust::meteo::{MeteoAPI, Options, Query, Timezone};
+use tigrust::meteo::MeteoAPI;
 use tigrust::plot::prices::Graph;
-use tigrust::query::QueryResponse;
+use tigrust::query::{QueryResponse, build_query};
 use tigrust::tibber_api::{Days, Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
 
@@ -75,6 +75,28 @@ async fn prices_by_day(
     }
 }
 
+async fn weather_info(
+    cache: &State<Cache<QueryResponse>>,
+    weather_api: &State<MeteoAPI<'_>>,
+) -> Result<QueryResponse, String> {
+    println!("serving weather from cache!");
+    let value_guard = cache.get_value();
+    match value_guard {
+        Ok(cached) => Ok(cached.clone()),
+        Err(CacheError::CacheExpired) => {
+            drop(value_guard);
+            let query = build_query();
+            match weather_api.do_query(&query).await {
+                Ok(res) => Ok(res),
+                Err(e) => {
+                    eprintln!("failed to get weather: {}", e);
+                    Err(format!("weather_api: {}", e))
+                }
+            }
+        }
+    }
+}
+
 #[get("/graph/<day>")]
 async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
     let now = chrono::Local::now();
@@ -122,30 +144,15 @@ struct FutureDay {
 }
 
 #[get("/weather")]
-async fn weather(weather_api: &State<MeteoAPI<'_>>) -> Template {
-    let query = Query::new()
-        .with(Options::LatLong(48.165318, 11.754293))
-        .with(Options::Timezone(Timezone::Auto))
-        .with(Options::ForecastDays(3))
-        .with(Options::Hourly(vec![
-            String::from("temperature_2m"),
-            String::from("precipitation"),
-            String::from("weathercode"),
-        ]))
-        .with(Options::Daily(vec![
-            String::from("weathercode"),
-            String::from("precipitation_sum"),
-            String::from("sunshine_duration"),
-            String::from("temperature_2m_max"),
-            String::from("temperature_2m_min"),
-        ]));
-    println!("weather query: {}", &query);
-    let result = match weather_api.do_query::<QueryResponse>(&query).await {
-        Err(e) => {
-            eprintln!("failed to get weather info {}", e);
-            panic!("{}", e);
+async fn weather(
+    cache: &State<Cache<QueryResponse>>,
+    weather_api: &State<MeteoAPI<'_>>,
+) -> Template {
+    let result = match weather_info(cache, weather_api).await {
+        Ok(r) => r,
+        Err(err) => {
+            return Template::render("errmsg", context! { error_msg: err });
         }
-        Ok(res) => res,
     };
     let temperatures_avg: Vec<f32> = result.hourly.temperature_2m[0..24]
         .chunks(3)
@@ -206,10 +213,14 @@ async fn main() -> Result<(), rocket::Error> {
     // TODO: See if TibberAPI needs to do anything to be threadsafe
     let tapi = TibberAPI::new(key);
     let prices = tapi.get_prices().await.unwrap();
-    let cache: Cache<Prices> = Cache::new(prices, 36000);
+    let price_cache: Cache<Prices> = Cache::new(prices, 36000);
     // cache.debug_expire_cache();
 
+    let query = build_query();
     let weather_api = MeteoAPI::new();
+    let weather_info: QueryResponse = weather_api.do_query(&query).await.unwrap();
+    let weather_cache = Cache::new(weather_info, 36000);
+    drop(query);
 
     let rocket = rocket::build()
         .attach(Template::fairing())
@@ -219,8 +230,9 @@ async fn main() -> Result<(), rocket::Error> {
         )
         .mount("/api/", routes![prices])
         .manage(tapi)
-        .manage(cache)
+        .manage(price_cache)
         .manage(weather_api)
+        .manage(weather_cache)
         .mount("/static", FileServer::from(relative!("static")));
 
     // use tokio::select! with a join handle from spawning the ssh serv
