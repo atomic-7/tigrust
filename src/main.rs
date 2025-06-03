@@ -5,11 +5,12 @@ use rocket::fs::{FileServer, relative};
 use rocket::serde::json::Json;
 use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::str::from_utf8;
 use tigrust::cache::{Cache, Error as CacheError};
 use tigrust::meteo::{MeteoAPI, Options, Query, Timezone};
 use tigrust::plot::prices::Graph;
+use tigrust::query::QueryResponse;
 use tigrust::tibber_api::{Days, Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
 
@@ -102,33 +103,6 @@ fn current_time() -> Template {
         "time",
         context! {time: format!("{}", chrono::offset::Local::now().format("%H:%M")), refresh_rate: minute_delta.num_seconds()},
     )
-}
-
-#[derive(Deserialize)]
-struct HourlyData {
-    // this seems to cause proplems while deserializing, despite the docs
-    // saying that DateTime has support for deserializing from ISO8601 via RFC339 parsing
-    // https://docs.rs/chrono/latest/chrono/serde/index.html
-    // 2025-03-24T20:00
-    // time: Vec<chrono::DateTime<Utc>>,
-    temperature_2m: Vec<f32>,
-    precipitation: Vec<f32>,
-    weathercode: Vec<u32>,
-}
-
-#[derive(Deserialize)]
-struct DailyData {
-    weathercode: Vec<u32>,
-    precipitation_sum: Vec<f32>,
-    sunshine_duration: Vec<f32>,
-    temperature_2m_max: Vec<f32>,
-    temperature_2m_min: Vec<f32>,
-}
-
-#[derive(Deserialize)]
-struct QueryResponse {
-    hourly: HourlyData,
-    daily: DailyData,
 }
 
 #[derive(Serialize)]
