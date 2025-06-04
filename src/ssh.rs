@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::cache::Cache;
@@ -10,8 +11,8 @@ use ratatui::prelude::CrosstermBackend;
 use ratatui::text::Text;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Clear};
 use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
-use russh::keys::ssh_key::rand_core::OsRng;
-use russh::keys::ssh_key::{self, PublicKey};
+// use russh::keys::ssh_key::rand_core::OsRng;
+use russh::keys::ssh_key::PublicKey;
 use russh::server::*;
 use russh::{Channel, ChannelId, Pty};
 use tokio::sync::Mutex;
@@ -176,14 +177,17 @@ impl AppServer {
             }
         });
 
+        let home = std::env::var("HOME").expect("unable to find path to home");
+        let home = Path::new(&home);
+        let key_path = home.join(".ssh").join("tigrust-localhost");
         // Config is part of russh::server
         let config = Config {
             inactivity_timeout: Some(std::time::Duration::from_secs(3600)),
             auth_rejection_time: std::time::Duration::from_secs(3),
             auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
             keys: vec![
-                // TODO: read permanent key from disc
-                russh::keys::PrivateKey::random(&mut OsRng, ssh_key::Algorithm::Ed25519).unwrap(),
+                russh::keys::PrivateKey::read_openssh_file(&key_path)
+                    .expect("unable to open ssh key"),
             ],
             nodelay: true,
             ..Default::default() // part of russh::server
