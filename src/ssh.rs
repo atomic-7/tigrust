@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::Arc;
 
 use crate::cache::Cache;
@@ -118,6 +117,7 @@ impl AppServer {
         let clients = self.clients.clone();
         // this needs to be changed
         let weather_cache = self.weather_cache.clone();
+        let api = MeteoAPI::new();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -129,23 +129,9 @@ impl AppServer {
                     // render the app here like normal
                     match app.page {
                         Page::Weather => {
-                            let guard = weather_cache.get_value();
-                            let weather = match guard {
-                                Ok(cached) => cached.to_owned(),
-                                Err(_) => {
-                                    drop(guard);
-                                    let api = MeteoAPI::new();
-                                    let query = build_query();
-                                    let res: Result<QueryResponse, Box<dyn Error + Send + Sync>> =
-                                        api.do_query(&query).await;
-                                    match res {
-                                        Ok(result) => result,
-                                        Err(_) => {
-                                            // TODO: display error me
-                                            return;
-                                        }
-                                    }
-                                }
+                            let weather = match weather_cache.get_or_hydrate(&api).await {
+                                Err(_) => return,
+                                Ok(cached) => cached,
                             };
                             let sum = weather
                                 .daily

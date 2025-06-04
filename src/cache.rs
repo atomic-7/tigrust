@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::fmt::{self, Display};
 use std::result::Result;
 use std::sync::{RwLock, RwLockReadGuard};
@@ -13,6 +14,7 @@ pub struct Cache<T> {
 #[derive(Debug)]
 pub enum Error {
     CacheExpired,
+    HydrateError,
 }
 
 impl Display for Error {
@@ -55,10 +57,31 @@ impl<T: Clone> Cache<T> {
         let mut time_guard = self.last_update.write().unwrap();
         *time_guard = Instant::now();
     }
+    pub async fn get_or_hydrate<H: Hydrator<T>>(
+        &self,
+        hydrator: &H,
+    ) -> Result<RwLockReadGuard<'_, T>, Error> {
+        if self.is_valid() {
+            Ok(self.value.read().unwrap())
+        } else {
+            match hydrator.hydrate().await {
+                Err(e) => Err(e),
+                Ok(update) => {
+                    self.update_value(update);
+                    Ok(self.get_value().unwrap())
+                }
+            }
+        }
+    }
     pub fn debug_expire_cache(&mut self) {
         let mut time_guard = self.last_update.write().unwrap();
         *time_guard = time_guard.checked_sub(self.timeout).unwrap();
     }
+}
+
+#[async_trait]
+pub trait Hydrator<T> {
+    async fn hydrate(&self) -> Result<T, Error>;
 }
 
 #[cfg(test)]

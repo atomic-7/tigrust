@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use http_body_util::{BodyExt, Empty};
 use hyper::Request;
 use hyper::body::{Buf, Bytes};
@@ -10,6 +11,9 @@ use serde::de::DeserializeOwned;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::pki_types::ServerName;
+
+use crate::cache::Hydrator;
+use crate::query::{QueryResponse, build_query};
 
 pub struct Forecast {
     pub precipation_probability: Vec<f32>,
@@ -73,6 +77,17 @@ impl<'a> MeteoAPI<'a> {
 
         let result: T = serde_json::from_reader(body.reader())?;
         Ok(result)
+    }
+}
+
+#[async_trait]
+impl<'a> Hydrator<QueryResponse> for MeteoAPI<'a> {
+    async fn hydrate(&self) -> Result<QueryResponse, crate::cache::Error> {
+        let query = build_query();
+        match self.do_query(&query).await {
+            Err(_) => Err(crate::cache::Error::HydrateError),
+            Ok(result) => Ok(result),
+        }
     }
 }
 

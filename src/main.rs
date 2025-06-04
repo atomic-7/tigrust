@@ -7,7 +7,7 @@ use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
 use std::str::from_utf8;
-use tigrust::cache::{Cache, Error as CacheError};
+use tigrust::cache::Cache;
 use tigrust::meteo::MeteoAPI;
 use tigrust::plot::prices::Graph;
 use tigrust::query::{QueryResponse, build_query};
@@ -19,11 +19,19 @@ async fn current_price(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>
     // TOOD: See if current_price template and current_time template could just be one
     let now = chrono::Local::now();
     let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
-    let prices = prices_by_day(Days::TODAY, tapi, cache).await.unwrap();
-    Template::render(
-        "current_price",
-        context! {refresh_rate: hour_delta.num_seconds(), price: format!("{:.1} ct", prices[now.hour() as usize] * 100.0 ) },
-    )
+    match cache.get_or_hydrate(tapi.inner()).await {
+        Err(e) => Template::render(
+            "error_msg",
+            context! {error_msg: format!("hydration error: {}", e)},
+        ),
+        Ok(p) => {
+            let todays = p.get(Days::TODAY).as_ref().unwrap();
+            Template::render(
+                "current_price",
+                context! {refresh_rate: hour_delta.num_seconds(), price: format!("{:.1} ct", todays[now.hour() as usize] * 100.0 ) },
+            )
+        }
+    }
 }
 
 // need to figure out how to route by accept header
@@ -33,44 +41,14 @@ async fn prices(
     tapi: &State<TibberAPI<'_>>,
     cache: &State<Cache<Prices>>,
 ) -> Option<Json<Vec<f32>>> {
-    if let Some(p) = prices_by_day(day, tapi, cache).await {
-        return Some(Json(p));
-    }
-    None
-}
-
-async fn prices_by_day(
-    day: Days,
-    tapi: &State<TibberAPI<'_>>,
-    cache: &State<Cache<Prices>>,
-) -> Option<Vec<f32>> {
-    let value_guard = cache.get_value();
-    match value_guard {
-        Ok(cached) => match cached.get(day) {
-            Some(prices) => Some(prices.to_owned()),
-            None => None,
-        },
-        Err(CacheError::CacheExpired) => {
-            // drop the guard so it does not need to live across async boundaries
-            drop(value_guard);
-            match tapi.get_prices().await {
-                Err(e) => {
-                    eprintln!("failed to get prices: {}", e);
-                    None
-                }
-                Ok(prices) => {
-                    println!("hitting the api!");
-                    // could probably be avoided by implementing DeRefMut, but I don't understand the
-                    // implications yet
-                    cache.update_value(prices.clone());
-                    if let Some(data) = prices.get(day) {
-                        Some(data.to_owned())
-                    } else {
-                        // no price data available for day, TODO: improve err msg
-                        None
-                    }
-                }
-            }
+    match cache.get_or_hydrate(tapi.inner()).await {
+        Err(_) => None,
+        Ok(prices) => {
+            let Some(daily) = prices.get(day) else {
+                return None;
+            };
+            // clöne :(
+            Some(Json(daily.clone()))
         }
     }
 }
@@ -80,20 +58,9 @@ async fn weather_info(
     weather_api: &State<MeteoAPI<'_>>,
 ) -> Result<QueryResponse, String> {
     println!("serving weather from cache!");
-    let value_guard = cache.get_value();
-    match value_guard {
-        Ok(cached) => Ok(cached.clone()),
-        Err(CacheError::CacheExpired) => {
-            drop(value_guard);
-            let query = build_query();
-            match weather_api.do_query(&query).await {
-                Ok(res) => Ok(res),
-                Err(e) => {
-                    eprintln!("failed to get weather: {}", e);
-                    Err(format!("weather_api: {}", e))
-                }
-            }
-        }
+    match cache.get_or_hydrate(weather_api.inner()).await {
+        Err(_) => Err(String::from("failed to hydrate weather")),
+        Ok(weather_info) => Ok(weather_info.clone()),
     }
 }
 
@@ -101,20 +68,29 @@ async fn weather_info(
 async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
     let now = chrono::Local::now();
     let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
-    let plot = match prices_by_day(day, tapi, cache).await {
-        None => String::from(format!("prices for {} not available", day)),
-        Some(prices) => {
+    match cache.get_or_hydrate(tapi.inner()).await {
+        Err(e) => Template::render(
+            "error_message",
+            context! {error_msg: format!("failed to hydrate {}", e)},
+        ),
+        Ok(prices) => {
+            let Some(todays) = prices.get(day) else {
+                return Template::render(
+                    "error_message",
+                    context! {error_msg: format!("prices for {} not available", day)},
+                );
+            };
             let mut buf = Vec::new();
             let current_hour: usize = now.hour().try_into().unwrap();
             let graph = Graph::new(current_hour);
-            let _ = graph.plot(Box::new(&mut buf), &prices);
-            from_utf8(buf.as_slice()).unwrap().to_string()
+            let _ = graph.plot(Box::new(&mut buf), &todays);
+            let plot = from_utf8(buf.as_slice()).unwrap().to_string();
+            Template::render(
+                "graph",
+                context! { graph: plot, refresh_rate: hour_delta.num_seconds()},
+            )
         }
-    };
-    Template::render(
-        "graph",
-        context! { graph: plot, refresh_rate: hour_delta.num_seconds()},
-    )
+    }
 }
 
 #[get("/time")]

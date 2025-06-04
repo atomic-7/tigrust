@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graphql_client::{GraphQLQuery, Response};
 use http_body_util::BodyExt;
 use hyper::{Request, body::Buf};
@@ -10,6 +11,8 @@ use std::{error::Error, io::Read};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::pki_types::ServerName;
+
+use crate::cache::Hydrator;
 
 #[derive(GraphQLQuery, Deserialize, Debug)]
 #[graphql(
@@ -136,6 +139,16 @@ impl<'a> TibberAPI<'a> {
             .collect::<Vec<f32>>()
             .into();
         Ok(prices)
+    }
+}
+
+#[async_trait]
+impl<'a> Hydrator<Prices> for TibberAPI<'a> {
+    async fn hydrate(&self) -> Result<Prices, crate::cache::Error> {
+        match self.get_prices().await {
+            Ok(prices) => Ok(prices),
+            Err(_) => Err(crate::cache::Error::HydrateError),
+        }
     }
 }
 
