@@ -134,16 +134,12 @@ impl AppServer {
                                 Err(_) => return,
                                 Ok(cached) => cached,
                             };
-                            let sum = weather
-                                .daily
-                                .temperature_2m_max
-                                .iter()
-                                .fold(0.0, |tmp, acc| tmp + acc);
                             let bars = BarGroup::default().bars(
                                 weather
                                     .hourly
                                     .temperature_2m
                                     .iter()
+                                    .take(24)
                                     .enumerate()
                                     .map(|(i, &t)| {
                                         Bar::default()
@@ -158,7 +154,6 @@ impl AppServer {
                                 .draw(|f: &mut Frame| {
                                     let area = f.area();
                                     f.render_widget(Clear, area);
-                                    f.render_widget(Text::from(format!("temp sum{}", sum)), area);
                                     f.render_widget(&chart, area);
                                 })
                                 .unwrap();
