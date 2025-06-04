@@ -2,21 +2,22 @@
 name = "tigrust"
 version = "0.1.0"
 edition = "2024"
+default-run = "tigrust"
 
 [dependencies]
 # measure times
-chrono = { version = "0.4.40", features = ["serde"]}
+chrono = { version = "0.4.40", features = ["serde"] }
 # http requests
-hyper = { version = "1", features = ["full"]}
-hyper-util = { version = "0.1", features = ["full"]}
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
 http-body-util = "0.1"
 # create the bodies for post requests, deserialize to struct
 graphql_client = "0.14.0"
-serde = {version = "1.0", features = ["derive"]}
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # webserver framework
-rocket = { version = "0.5.1", default-features = true, features=["json"]}
-rocket_dyn_templates = { version = "0.2.0", features=["tera"]}
+rocket = { version = "0.5.1", default-features = true, features = ["json"] }
+rocket_dyn_templates = { version = "0.2.0", features = ["tera"] }
 # async runtime
 tokio = "1.44.0"
 # use .env files
@@ -34,3 +35,5 @@ color-eyre = "0.6.5"
 russh = "0.52.1"
 # error type in tibtui to fit with russh errors
 anyhow = "1.0.98"
+# define traits with async methods
+async-trait = "0.1.88"
