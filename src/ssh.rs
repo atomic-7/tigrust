@@ -1,46 +1,44 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::Arc;
 
-use crate::meteo::{MeteoAPI, Options, Query, Timezone};
+use crate::cache::Cache;
+use crate::meteo::MeteoAPI;
+use crate::query::{QueryResponse, build_query};
 use color_eyre::Result;
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
 use ratatui::text::Text;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Clear};
-use ratatui::{Terminal, TerminalOptions, Viewport};
+use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
 use russh::keys::ssh_key::rand_core::OsRng;
 use russh::keys::ssh_key::{self, PublicKey};
 use russh::server::*;
 use russh::{Channel, ChannelId, Pty};
-use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
 
-#[derive(Deserialize)]
-struct HourlyData {
-    temperature_2m: Vec<f32>,
-    // precipitation: Vec<f32>,
-    // weathercode: Vec<u32>,
-}
-
-#[derive(Deserialize)]
-struct QueryResponse {
-    hourly: HourlyData,
-}
-
 // server stuff
+pub enum Page {
+    Weather,
+    Price,
+}
 pub struct App {
     pub counter: usize,
+    pub page: Page,
 }
 
 impl App {
     pub fn new() -> App {
         // TODO: fetch weather data and price data here
         // TODO: later setup link between server data and ssh tui
-        Self { counter: 0 }
+        Self {
+            counter: 0,
+            page: Page::Weather,
+        }
     }
 }
 
@@ -93,21 +91,14 @@ pub struct AppServer {
     // save each clients app state seperately
     clients: Arc<Mutex<HashMap<usize, (SshTerminal, App)>>>,
     id: usize,
-    data: BarChart<'static>, // TODO: this feels incorrect
+    weather_cache: Arc<Cache<QueryResponse>>,
 }
 
 impl AppServer {
     pub async fn new() -> Self {
         let api = MeteoAPI::new();
-        let query = Query::new()
-            .with(Options::LatLong(48.165318, 11.754293))
-            .with(Options::Timezone(Timezone::Auto))
-            .with(Options::ForecastDays(1))
-            .with(Options::Hourly(vec![
-                String::from("temperature_2m"),
-                // String::from("precipitation"),
-                // String::from("weathercode"),
-            ]));
+        let query = build_query();
+
         let response = match api.do_query::<QueryResponse>(&query).await {
             Err(e) => {
                 eprintln!("failed to get weather info: {:?}", e);
@@ -115,32 +106,18 @@ impl AppServer {
             }
             Ok(res) => res,
         };
-        let bars = BarGroup::default().bars(
-            response
-                .hourly
-                .temperature_2m
-                .iter()
-                .enumerate()
-                .map(|(i, &t)| {
-                    Bar::default()
-                        .value(t as u64)
-                        .label(format!("B{}", i).into())
-                })
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
-        let barchart = BarChart::default().data(bars);
+        let weather_cache = Arc::new(Cache::new(response, 36000));
         Self {
             clients: Arc::new(Mutex::new(HashMap::new())),
             id: 0,
-            data: barchart,
+            weather_cache,
         }
     }
 
     pub async fn run(&mut self) -> Result<(), std::io::Error> {
         let clients = self.clients.clone();
         // this needs to be changed
-        let data = self.data.clone();
+        let weather_cache = self.weather_cache.clone();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -150,14 +127,65 @@ impl AppServer {
                     app.counter += 1;
 
                     // render the app here like normal
-                    terminal
-                        .draw(|f| {
-                            let area = f.area();
-                            f.render_widget(Clear, area);
-                            f.render_widget(Text::from(format!("{}", app.counter)), area);
-                            f.render_widget(&data, area);
-                        })
-                        .unwrap();
+                    match app.page {
+                        Page::Weather => {
+                            let guard = weather_cache.get_value();
+                            let weather = match guard {
+                                Ok(cached) => cached.to_owned(),
+                                Err(_) => {
+                                    drop(guard);
+                                    let api = MeteoAPI::new();
+                                    let query = build_query();
+                                    let res: Result<QueryResponse, Box<dyn Error + Send + Sync>> =
+                                        api.do_query(&query).await;
+                                    match res {
+                                        Ok(result) => result,
+                                        Err(_) => {
+                                            // TODO: display error me
+                                            return;
+                                        }
+                                    }
+                                }
+                            };
+                            let sum = weather
+                                .daily
+                                .temperature_2m_max
+                                .iter()
+                                .fold(0.0, |tmp, acc| tmp + acc);
+                            let bars = BarGroup::default().bars(
+                                weather
+                                    .hourly
+                                    .temperature_2m
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &t)| {
+                                        Bar::default()
+                                            .value(t as u64)
+                                            .label(format!("B{}", i).into())
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            );
+                            let chart = BarChart::default().data(bars);
+                            terminal
+                                .draw(|f: &mut Frame| {
+                                    let area = f.area();
+                                    f.render_widget(Clear, area);
+                                    f.render_widget(Text::from(format!("temp sum{}", sum)), area);
+                                    f.render_widget(&chart, area);
+                                })
+                                .unwrap();
+                        }
+                        Page::Price => {
+                            terminal
+                                .draw(|f: &mut Frame| {
+                                    let area = f.area();
+                                    f.render_widget(Clear, area);
+                                    f.render_widget(Text::from(format!("{}", app.counter)), area);
+                                })
+                                .unwrap();
+                        }
+                    }
                 }
             }
         });
@@ -194,7 +222,8 @@ impl Drop for AppServer {
 }
 
 impl Server for AppServer {
-    type Handler = Self; // handler needs to satisfy static lifetime
+    type Handler = Self;
+    // handler needs to satisfy static lifetime
     fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self {
         let s = self.clone();
         self.id += 1;
@@ -236,6 +265,7 @@ impl Handler for AppServer {
         Ok(Auth::Accept)
     }
 
+    // update
     // incoming data, react to incoming events. maybe dispatch events to a queue that is handled in
     // the main loop?
     async fn data(
@@ -248,6 +278,14 @@ impl Handler for AppServer {
             b"q" => {
                 self.clients.lock().await.remove(&self.id);
                 session.close(channel)?;
+            }
+            b"n" => {
+                let mut clients = self.clients.lock().await;
+                let (_, app) = clients.get_mut(&self.id).unwrap();
+                app.page = match app.page {
+                    Page::Price => Page::Weather,
+                    Page::Weather => Page::Price,
+                }
             }
             _ => {}
         }
