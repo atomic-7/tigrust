@@ -84,6 +84,27 @@ pub trait Hydrator<T> {
     async fn hydrate(&self) -> Result<T, Error>;
 }
 
+pub struct HydratingCache<T: Clone, H: Hydrator<T>> {
+    cache: Cache<T>,
+    hydrator: H,
+}
+
+impl<T: Clone, H: Hydrator<T>> HydratingCache<T, H> {
+    pub async fn new(hydrator: H, timeout: u64) -> Result<Self, Error> {
+        let Ok(content) = hydrator.hydrate().await else {
+            return Err(Error::HydrateError);
+        };
+        Ok(Self {
+            cache: Cache::new(content, timeout),
+            hydrator,
+        })
+    }
+    // retrieves the cached value or tries rehydrating it
+    pub async fn get(&mut self) -> Result<RwLockReadGuard<'_, T>, Error> {
+        self.cache.get_or_hydrate(&self.hydrator).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

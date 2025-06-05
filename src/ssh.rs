@@ -1,17 +1,16 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use crate::cache::Cache;
+use crate::cache::HydratingCache;
 use crate::meteo::MeteoAPI;
-use crate::query::{QueryResponse, build_query};
+use crate::query::QueryResponse;
 use crate::tibber_api::{Prices, TibberAPI};
+use crate::tui::{App, Page};
 use color_eyre::Result;
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
-use ratatui::text::Text;
-use ratatui::widgets::{Bar, BarChart, BarGroup, Clear};
-use ratatui::{Frame, Terminal, TerminalOptions, Viewport};
+use ratatui::{Terminal, TerminalOptions, Viewport};
 // use russh::keys::ssh_key::rand_core::OsRng;
 use russh::keys::ssh_key::PublicKey;
 use russh::server::*;
@@ -20,31 +19,14 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
-type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
+pub type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
+static mut WEATHER_CACHE: OnceLock<HydratingCache<QueryResponse, MeteoAPI<'static>>> =
+    OnceLock::new();
+static mut PRICE_CACHE: OnceLock<HydratingCache<Prices, TibberAPI<'static>>> = OnceLock::new();
 
 // server stuff
-pub enum Page {
-    Weather,
-    Price,
-}
-pub struct App {
-    pub counter: usize,
-    pub page: Page,
-}
-
-impl App {
-    pub fn new() -> App {
-        // TODO: fetch weather data and price data here
-        // TODO: later setup link between server data and ssh tui
-        Self {
-            counter: 0,
-            page: Page::Weather,
-        }
-    }
-}
-
 // The terminal handle represents a terminal to ratatui
-struct TerminalHandle {
+pub struct TerminalHandle {
     sender: UnboundedSender<Vec<u8>>,
     sink: Vec<u8>, // sink collects data to send
 }
@@ -92,46 +74,34 @@ pub struct AppServer {
     // save each clients app state seperately
     clients: Arc<Mutex<HashMap<usize, (SshTerminal, App)>>>,
     id: usize,
-    weather_cache: Arc<Cache<QueryResponse>>,
-    price_cache: Arc<Cache<Prices>>,
 }
 
 impl AppServer {
     pub async fn new() -> Self {
-        let api = MeteoAPI::new();
-        let query = build_query();
-
-        let response = match api.do_query::<QueryResponse>(&query).await {
-            Err(e) => {
-                eprintln!("failed to get weather info: {:?}", e);
-                panic!("something went wrong");
-            }
-            Ok(res) => res,
-        };
-        let weather_cache = Arc::new(Cache::new(response, 3600));
-        let price_cache = Arc::new(Cache::new(Prices::new(), 3600));
+        let weather_api = MeteoAPI::new();
+        let weather_cache = HydratingCache::new(weather_api, 3600)
+            .await
+            .expect("failed to hydrate weather cache");
+        let _ = dotenv::dotenv().expect("unable to find .env file");
+        let tibber_key = dotenv::var("TOKEN")
+            .expect("TOKEN needs to be either defined as an environment variable or in .env");
+        let tapi = TibberAPI::new(tibber_key);
+        let price_cache = HydratingCache::new(tapi, 3600)
+            .await
+            .expect("failed to hydrate price cache");
+        // mutating static state is considered unsafe
+        unsafe {
+            let _ = WEATHER_CACHE.set(weather_cache);
+            let _ = PRICE_CACHE.set(price_cache);
+        }
         Self {
             clients: Arc::new(Mutex::new(HashMap::new())),
             id: 0,
-            weather_cache,
-            price_cache,
         }
     }
 
     pub async fn run(&mut self) -> Result<(), std::io::Error> {
         let clients = self.clients.clone();
-        let _ = dotenv::dotenv().expect("unable to find .env file");
-        let tibber_key = dotenv::var("TOKEN")
-            .expect("TOKEN needs to be either defined as an environment variable or in .env");
-        let tapi = TibberAPI::new(tibber_key);
-        let weather_api = MeteoAPI::new();
-        let price_cache = self.price_cache.clone();
-        let weather_cache = self.weather_cache.clone();
-        let prices = tapi
-            .get_prices()
-            .await
-            .expect("failed to get tibber prices");
-        price_cache.update_value(prices);
 
         tokio::spawn(async move {
             loop {
@@ -142,66 +112,13 @@ impl AppServer {
                     app.counter += 1;
 
                     // render the app here like normal
-                    match app.page {
-                        Page::Weather => {
-                            let weather = match weather_cache.get_or_hydrate(&weather_api).await {
-                                Err(_) => return, // TODO: display msg about missing data
-                                Ok(cached) => cached,
-                            };
-                            let bars = BarGroup::default().bars(
-                                weather
-                                    .hourly
-                                    .temperature_2m
-                                    .iter()
-                                    .take(24)
-                                    .enumerate()
-                                    .map(|(i, &t)| {
-                                        Bar::default()
-                                            .value(t as u64)
-                                            .label(format!("B{}", i).into())
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .as_slice(),
-                            );
-                            let chart = BarChart::default().data(bars);
-                            terminal
-                                .draw(|f: &mut Frame| {
-                                    let area = f.area();
-                                    f.render_widget(Clear, area);
-                                    f.render_widget(&chart, area);
-                                })
-                                .unwrap();
-                        }
-                        Page::Price => {
-                            let prices = match price_cache.get_or_hydrate(&tapi).await {
-                                Err(_) => return, // TODO: display msg about missing data
-                                Ok(cached) => cached,
-                            };
-                            let bars = BarGroup::default().bars(
-                                prices
-                                    .today
-                                    .as_ref()
-                                    .unwrap()
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(i, &p)| {
-                                        Bar::default()
-                                            .value((p * 100.0) as u64)
-                                            .label(format!("{}", i).into())
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .as_slice(),
-                            );
-                            let chart = BarChart::default().data(bars);
-                            terminal
-                                .draw(|f: &mut Frame| {
-                                    let area = f.area();
-                                    f.render_widget(Clear, area);
-                                    f.render_widget(Text::from(format!("{}", app.counter)), area);
-                                    f.render_widget(chart, area);
-                                })
-                                .unwrap();
-                        }
+                    unsafe {
+                        app.render(
+                            terminal,
+                            WEATHER_CACHE.get_mut().unwrap(),
+                            PRICE_CACHE.get_mut().unwrap(),
+                        )
+                        .await;
                     }
                 }
             }
