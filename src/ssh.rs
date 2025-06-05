@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::cache::Cache;
 use crate::meteo::MeteoAPI;
 use crate::query::{QueryResponse, build_query};
+use crate::tibber_api::{Prices, TibberAPI};
 use color_eyre::Result;
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
@@ -92,6 +93,7 @@ pub struct AppServer {
     clients: Arc<Mutex<HashMap<usize, (SshTerminal, App)>>>,
     id: usize,
     weather_cache: Arc<Cache<QueryResponse>>,
+    price_cache: Arc<Cache<Prices>>,
 }
 
 impl AppServer {
@@ -106,19 +108,31 @@ impl AppServer {
             }
             Ok(res) => res,
         };
-        let weather_cache = Arc::new(Cache::new(response, 36000));
+        let weather_cache = Arc::new(Cache::new(response, 3600));
+        let price_cache = Arc::new(Cache::new(Prices::new(), 3600));
         Self {
             clients: Arc::new(Mutex::new(HashMap::new())),
             id: 0,
             weather_cache,
+            price_cache,
         }
     }
 
     pub async fn run(&mut self) -> Result<(), std::io::Error> {
         let clients = self.clients.clone();
-        // this needs to be changed
+        let _ = dotenv::dotenv().expect("unable to find .env file");
+        let tibber_key = dotenv::var("TOKEN")
+            .expect("TOKEN needs to be either defined as an environment variable or in .env");
+        let tapi = TibberAPI::new(tibber_key);
+        let weather_api = MeteoAPI::new();
+        let price_cache = self.price_cache.clone();
         let weather_cache = self.weather_cache.clone();
-        let api = MeteoAPI::new();
+        let prices = tapi
+            .get_prices()
+            .await
+            .expect("failed to get tibber prices");
+        price_cache.update_value(prices);
+
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -130,8 +144,8 @@ impl AppServer {
                     // render the app here like normal
                     match app.page {
                         Page::Weather => {
-                            let weather = match weather_cache.get_or_hydrate(&api).await {
-                                Err(_) => return,
+                            let weather = match weather_cache.get_or_hydrate(&weather_api).await {
+                                Err(_) => return, // TODO: display msg about missing data
                                 Ok(cached) => cached,
                             };
                             let bars = BarGroup::default().bars(
@@ -159,11 +173,32 @@ impl AppServer {
                                 .unwrap();
                         }
                         Page::Price => {
+                            let prices = match price_cache.get_or_hydrate(&tapi).await {
+                                Err(_) => return, // TODO: display msg about missing data
+                                Ok(cached) => cached,
+                            };
+                            let bars = BarGroup::default().bars(
+                                prices
+                                    .today
+                                    .as_ref()
+                                    .unwrap()
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &p)| {
+                                        Bar::default()
+                                            .value((p * 100.0) as u64)
+                                            .label(format!("{}", i).into())
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                            );
+                            let chart = BarChart::default().data(bars);
                             terminal
                                 .draw(|f: &mut Frame| {
                                     let area = f.area();
                                     f.render_widget(Clear, area);
                                     f.render_widget(Text::from(format!("{}", app.counter)), area);
+                                    f.render_widget(chart, area);
                                 })
                                 .unwrap();
                         }
