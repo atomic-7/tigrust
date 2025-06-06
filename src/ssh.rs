@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use crate::cache::HydratingCache;
 use crate::meteo::MeteoAPI;
@@ -20,9 +20,6 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub type SshTerminal = Terminal<CrosstermBackend<TerminalHandle>>;
-static mut WEATHER_CACHE: OnceLock<HydratingCache<QueryResponse, MeteoAPI<'static>>> =
-    OnceLock::new();
-static mut PRICE_CACHE: OnceLock<HydratingCache<Prices, TibberAPI<'static>>> = OnceLock::new();
 
 // server stuff
 // The terminal handle represents a terminal to ratatui
@@ -73,35 +70,41 @@ impl std::io::Write for TerminalHandle {
 pub struct AppServer {
     // save each clients app state seperately
     clients: Arc<Mutex<HashMap<usize, (SshTerminal, App)>>>,
+    price_cache: Arc<HydratingCache<Prices, TibberAPI>>,
+    weather_cache: Arc<HydratingCache<QueryResponse, MeteoAPI>>,
     id: usize,
 }
 
 impl AppServer {
     pub async fn new() -> Self {
         let weather_api = MeteoAPI::new();
-        let weather_cache = HydratingCache::new(weather_api, 3600)
-            .await
-            .expect("failed to hydrate weather cache");
+        let weather_cache = Arc::new(
+            HydratingCache::new(weather_api, 3600)
+                .await
+                .expect("failed to hydrate weather cache"),
+        );
         let _ = dotenv::dotenv().expect("unable to find .env file");
         let tibber_key = dotenv::var("TOKEN")
             .expect("TOKEN needs to be either defined as an environment variable or in .env");
         let tapi = TibberAPI::new(tibber_key);
-        let price_cache = HydratingCache::new(tapi, 3600)
-            .await
-            .expect("failed to hydrate price cache");
+        let price_cache = Arc::new(
+            HydratingCache::new(tapi, 3600)
+                .await
+                .expect("failed to hydrate price cache"),
+        );
         // mutating static state is considered unsafe
-        unsafe {
-            let _ = WEATHER_CACHE.set(weather_cache);
-            let _ = PRICE_CACHE.set(price_cache);
-        }
         Self {
             clients: Arc::new(Mutex::new(HashMap::new())),
+            price_cache,
+            weather_cache,
             id: 0,
         }
     }
 
     pub async fn run(&mut self) -> Result<(), std::io::Error> {
         let clients = self.clients.clone();
+        let weather_cache = self.weather_cache.clone();
+        let price_cache = self.price_cache.clone();
 
         tokio::spawn(async move {
             loop {
@@ -112,14 +115,8 @@ impl AppServer {
                     app.counter += 1;
 
                     // render the app here like normal
-                    unsafe {
-                        app.render(
-                            terminal,
-                            WEATHER_CACHE.get_mut().unwrap(),
-                            PRICE_CACHE.get_mut().unwrap(),
-                        )
+                    app.render(terminal, weather_cache.clone(), price_cache.clone())
                         .await;
-                    }
                 }
             }
         });

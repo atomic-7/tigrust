@@ -21,19 +21,16 @@ pub struct Forecast {
 
 const API: &'static str = "https://api.open-meteo.com/v1/forecast";
 
-pub struct MeteoAPI<'a> {
+pub struct MeteoAPI {
     tls_connector: TlsConnector,
-    dns_name: ServerName<'a>,
 }
 
-impl<'a> MeteoAPI<'a> {
+impl MeteoAPI {
     pub fn new() -> Self {
         let config = rustls_platform_verifier::tls_config();
         let connector = TlsConnector::from(Arc::new(config));
-        let dns_name = ServerName::try_from("api.open-meteo.com").unwrap();
         Self {
             tls_connector: connector,
-            dns_name,
         }
     }
 
@@ -45,10 +42,11 @@ impl<'a> MeteoAPI<'a> {
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
         let addr = format!("{}:{}", host, port);
+        let dns_name = ServerName::try_from("api.open-meteo.com").expect("invalid DNS name");
         let stream = TcpStream::connect(addr).await?;
         let tls_stream = self
             .tls_connector
-            .connect(self.dns_name.to_owned(), stream)
+            .connect(dns_name.to_owned(), stream)
             .await?;
         let io = TokioIo::new(tls_stream);
 
@@ -81,7 +79,7 @@ impl<'a> MeteoAPI<'a> {
 }
 
 #[async_trait]
-impl<'a> Hydrator<QueryResponse> for MeteoAPI<'a> {
+impl Hydrator<QueryResponse> for MeteoAPI {
     async fn hydrate(&self) -> Result<QueryResponse, crate::cache::Error> {
         let query = build_query();
         match self.do_query(&query).await {

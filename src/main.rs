@@ -15,7 +15,7 @@ use tigrust::tibber_api::{Days, Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
 
 #[get("/current_price", format = "text/html")]
-async fn current_price(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
+async fn current_price(tapi: &State<TibberAPI>, cache: &State<Cache<Prices>>) -> Template {
     // TOOD: See if current_price template and current_time template could just be one
     let now = chrono::Local::now();
     let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
@@ -38,7 +38,7 @@ async fn current_price(tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>
 #[get("/prices/<day>", format = "application/json")]
 async fn prices(
     day: Days,
-    tapi: &State<TibberAPI<'_>>,
+    tapi: &State<TibberAPI>,
     cache: &State<Cache<Prices>>,
 ) -> Option<Json<Vec<f32>>> {
     match cache.get_or_hydrate(tapi.inner()).await {
@@ -55,7 +55,7 @@ async fn prices(
 
 async fn weather_info(
     cache: &State<Cache<QueryResponse>>,
-    weather_api: &State<MeteoAPI<'_>>,
+    weather_api: &State<MeteoAPI>,
 ) -> Result<QueryResponse, String> {
     println!("serving weather from cache!");
     match cache.get_or_hydrate(weather_api.inner()).await {
@@ -65,7 +65,7 @@ async fn weather_info(
 }
 
 #[get("/graph/<day>")]
-async fn graph(day: Days, tapi: &State<TibberAPI<'_>>, cache: &State<Cache<Prices>>) -> Template {
+async fn graph(day: Days, tapi: &State<TibberAPI>, cache: &State<Cache<Prices>>) -> Template {
     let now = chrono::Local::now();
     let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
     match cache.get_or_hydrate(tapi.inner()).await {
@@ -120,10 +120,7 @@ struct FutureDay {
 }
 
 #[get("/weather")]
-async fn weather(
-    cache: &State<Cache<QueryResponse>>,
-    weather_api: &State<MeteoAPI<'_>>,
-) -> Template {
+async fn weather(cache: &State<Cache<QueryResponse>>, weather_api: &State<MeteoAPI>) -> Template {
     let result = match weather_info(cache, weather_api).await {
         Ok(r) => r,
         Err(err) => {
@@ -192,6 +189,7 @@ async fn main() -> Result<(), rocket::Error> {
     let price_cache: Cache<Prices> = Cache::new(prices, 36000);
     // cache.debug_expire_cache();
 
+    // TODO: consider rewriting this to use the new HydratingCache
     let query = build_query();
     let weather_api = MeteoAPI::new();
     let weather_info: QueryResponse = weather_api.do_query(&query).await.unwrap();

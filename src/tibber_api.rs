@@ -24,9 +24,8 @@ pub struct GetPriceInfo;
 
 type ApiResult<T> = Result<T, serde_json::Error>;
 
-pub struct TibberAPI<'a> {
+pub struct TibberAPI {
     api_key: String,
-    dnsname: ServerName<'a>,
     tls_connector: TlsConnector,
 }
 
@@ -51,15 +50,12 @@ impl Error for ApiError {}
 
 const API_URL: &'static str = "https://api.tibber.com/v1-beta/gql";
 
-impl<'a> TibberAPI<'a> {
+impl TibberAPI {
     pub fn new(key: String) -> Self {
         let config = rustls_platform_verifier::tls_config();
         let connector = TlsConnector::from(Arc::new(config));
-        let dnsname =
-            ServerName::try_from("api.tibber.com").expect("api url should always be valid");
         Self {
             api_key: key,
-            dnsname,
             tls_connector: connector,
         }
     }
@@ -69,11 +65,9 @@ impl<'a> TibberAPI<'a> {
         let host = url.host().expect("uri has no host??");
         let port = url.port_u16().unwrap_or(443);
         let addr = format!("{}:{}", host, port);
+        let dns_name = ServerName::try_from("api.tibber.com").expect("invalid tibber api url");
         let stream = TcpStream::connect(addr).await?;
-        let tls_stream = self
-            .tls_connector
-            .connect(self.dnsname.to_owned(), stream)
-            .await?;
+        let tls_stream = self.tls_connector.connect(dns_name, stream).await?;
         let io = TokioIo::new(tls_stream);
 
         let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
@@ -143,7 +137,7 @@ impl<'a> TibberAPI<'a> {
 }
 
 #[async_trait]
-impl<'a> Hydrator<Prices> for TibberAPI<'a> {
+impl Hydrator<Prices> for TibberAPI {
     async fn hydrate(&self) -> Result<Prices, crate::cache::Error> {
         match self.get_prices().await {
             Ok(prices) => Ok(prices),

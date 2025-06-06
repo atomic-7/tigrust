@@ -100,7 +100,7 @@ impl<T: Clone, H: Hydrator<T>> HydratingCache<T, H> {
         })
     }
     // retrieves the cached value or tries rehydrating it
-    pub async fn get(&mut self) -> Result<RwLockReadGuard<'_, T>, Error> {
+    pub async fn get(&self) -> Result<RwLockReadGuard<'_, T>, Error> {
         self.cache.get_or_hydrate(&self.hydrator).await
     }
 }

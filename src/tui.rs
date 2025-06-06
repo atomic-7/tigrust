@@ -5,6 +5,7 @@ use crate::{cache::HydratingCache, query::QueryResponse, tibber_api::Prices};
 use ratatui::Frame;
 use ratatui::text::Text;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Clear};
+use std::sync::Arc;
 
 pub enum Page {
     Weather,
@@ -28,8 +29,8 @@ impl App {
     pub async fn render(
         &mut self,
         terminal: &mut SshTerminal,
-        weather_cache: &mut HydratingCache<QueryResponse, MeteoAPI<'static>>,
-        price_cache: &mut HydratingCache<Prices, TibberAPI<'static>>,
+        weather_cache: Arc<HydratingCache<QueryResponse, MeteoAPI>>,
+        price_cache: Arc<HydratingCache<Prices, TibberAPI>>,
     ) {
         match self.page {
             Page::Weather => {
