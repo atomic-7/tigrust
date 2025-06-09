@@ -1,10 +1,12 @@
 use chrono::{self, Duration, Timelike};
 use dotenv;
+// use include_dir::{Dir, include_dir};
 use rocket::State;
-use rocket::fs::{FileServer, relative};
+use rocket::fs::FileServer;
 use rocket::serde::json::Json;
 use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
+// use rocket_include_dir::StaticFiles;
 use serde::Serialize;
 use tigrust::ssh::AppServer;
 use std::str::from_utf8;
@@ -178,9 +180,11 @@ async fn index() -> Template {
     )
 }
 
+
 // rocket::main launches the tokio runtime
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    // static ASSET_DIR: Dir = include_dir!("static");
     let _ = dotenv::dotenv();
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     let tapi = TibberAPI::new(key);
@@ -209,7 +213,8 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(price_cache)
         .manage(weather_api)
         .manage(weather_cache)
-        .mount("/static", FileServer::from(relative!("static")));
+        // .mount("/static", StaticFiles::from(&ASSET_DIR));
+        .mount("/static", FileServer::from("static"));
 
     tokio::select! {
         http_err = rocket.launch() => {

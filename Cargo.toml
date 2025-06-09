@@ -38,3 +38,4 @@ anyhow = "1.0.98"
 # define traits with async methods
 async-trait = "0.1.88"
 rocket-include-dir = "1.1.0"
+include_dir = "0.7.4"
