@@ -6,6 +6,7 @@ use rocket::serde::json::Json;
 use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
 use serde::Serialize;
+use tigrust::ssh::AppServer;
 use std::str::from_utf8;
 use tigrust::cache::Cache;
 use tigrust::meteo::MeteoAPI;
@@ -177,17 +178,14 @@ async fn index() -> Template {
     )
 }
 
-// rocket::main launches the tokio runtime, if this is not desired leave it out and start the
-// chosen runtime
+// rocket::main launches the tokio runtime
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     let _ = dotenv::dotenv();
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
-    // TODO: See if TibberAPI needs to do anything to be threadsafe
     let tapi = TibberAPI::new(key);
     let prices = tapi.get_prices().await.unwrap();
     let price_cache: Cache<Prices> = Cache::new(prices, 36000);
-    // cache.debug_expire_cache();
 
     // TODO: consider rewriting this to use the new HydratingCache
     let query = build_query();
@@ -195,6 +193,10 @@ async fn main() -> Result<(), rocket::Error> {
     let weather_info: QueryResponse = weather_api.do_query(&query).await.unwrap();
     let weather_cache = Cache::new(weather_info, 36000);
     drop(query);
+
+    // hitting the api twice in a row seems scuffed
+    // should maybe implement clone for Cache and HydratingCache
+    let mut ssh_server = AppServer::new().await;
 
     let rocket = rocket::build()
         .attach(Template::fairing())
@@ -209,17 +211,19 @@ async fn main() -> Result<(), rocket::Error> {
         .manage(weather_cache)
         .mount("/static", FileServer::from(relative!("static")));
 
-    // use tokio::select! with a join handle from spawning the ssh serv
-    rocket.launch().await?;
+    tokio::select! {
+        http_err = rocket.launch() => {
+            match http_err {
+                Ok(_) => (),
+                Err(e) => {
+                    eprintln!("server stopped: {:?}", e);
+                }
+            }
+        }
+        ssh_err = ssh_server.run() => {
+            eprintln!("ssh server stopped: {:?}", ssh_err);
+        }
+        
+    };
     Ok(())
 }
-
-// use rocket::{Rocket, Build};
-// use rocket::launch;
-// #[launch]
-// fn rocket() -> Rocket<Build> {
-//     // the / is the base path of the namespace
-//     // doc example is "hello" as basepath, with world as the route -> /hello/world
-//     // it is also possible to add a route to multiple basepaths
-//     rocket::build().mount("/", routes![index])
-// }

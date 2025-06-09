@@ -2,10 +2,10 @@ use crate::meteo::MeteoAPI;
 use crate::ssh::SshTerminal;
 use crate::tibber_api::TibberAPI;
 use crate::{cache::HydratingCache, query::QueryResponse, tibber_api::Prices};
-use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Frame;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Text;
-use ratatui::widgets::{Bar, BarChart, BarGroup, Clear};
+use ratatui::widgets::{Bar, BarChart, BarGroup, Block, Clear};
 use std::sync::Arc;
 
 pub enum Page {
@@ -36,6 +36,7 @@ impl App {
         match self.page {
             Page::Weather => {
                 let weather = weather_cache.get().await.unwrap();
+
                 let bars = BarGroup::default().bars(
                     weather
                         .hourly
@@ -51,24 +52,17 @@ impl App {
                         .collect::<Vec<_>>()
                         .as_slice(),
                 );
-                let chart = BarChart::default().data(bars);
+
                 terminal
                     .draw(|f: &mut Frame| {
-                        let total_area = f.area();
-                        let bar_width = if total_area.width < 48 { 2 } else { 4 }; // TODO: adjust depending on space
-                        let bar_gap = 2;
-                        let chart_width: u16 = 24 * (bar_width + bar_gap);
-                        let chart = chart.bar_width(bar_width).bar_gap(bar_gap);
-                        
-                        let area = center(total_area, Constraint::Length(chart_width), Constraint::Percentage(95));
-                        f.render_widget(Clear, area);
-                        f.render_widget(&chart, area);
-                        f.render_widget(Text::from(format!("Weather | Counter {}", self.counter)), area);
+                        f.render_widget(Clear, f.area());
+                        render_chart(f, bars, "Weather");
                     })
                     .unwrap();
             }
             Page::Price => {
                 let prices = price_cache.get().await.unwrap();
+
                 let bars = BarGroup::default().bars(
                     prices
                         .today
@@ -84,19 +78,12 @@ impl App {
                         .collect::<Vec<_>>()
                         .as_slice(),
                 );
-                let chart = BarChart::default().data(bars);
+
                 terminal
                     .draw(|f: &mut Frame| {
                         // TODO: dedupe this
-                        let total_area = f.area();
-                        let bar_width = if total_area.width < 48 { 2 } else { 4 }; // TODO: adjust depending on space
-                        let bar_gap = 2;
-                        let chart_width: u16 = 24 * (bar_width + bar_gap);
-                        let chart = chart.bar_width(bar_width).bar_gap(bar_gap);
-                        let area = center(total_area, Constraint::Length(chart_width), Constraint::Percentage(95));
-                        f.render_widget(Clear, area);
-                        f.render_widget(chart, area);
-                        f.render_widget(Text::from(format!("Prices | Counter {}", self.counter)), area);
+                        f.render_widget(Clear, f.area());
+                        render_chart(f, bars, "Prices");
                     })
                     .unwrap();
             }
@@ -104,12 +91,52 @@ impl App {
     }
 }
 
+fn render_chart(f: &mut Frame, bars: BarGroup, title: &str) {
+    let chart = BarChart::default().data(bars);
+    let total_area = f.area();
+    let bar_gap = if total_area.width > 140 { 2 } else { 1 };
+    let bar_width = (total_area.width / 24) - bar_gap;
+    let chart_width: u16 = 24 * (bar_width + bar_gap) - bar_gap;
+    let mut chart = chart.bar_width(bar_width).bar_gap(bar_gap);
+    if total_area.width < 96 {
+        chart = chart.direction(ratatui::layout::Direction::Horizontal);
+    }
+
+    let chart = chart.bar_width(bar_width).bar_gap(bar_gap);
+    let area = center(
+        total_area,
+        Constraint::Length(chart_width),
+        Constraint::Percentage(95),
+    );
+    let [area, keybind_area] =
+        Layout::vertical([Constraint::Fill(1), Constraint::Max(1)]).areas(area);
+    let block = Block::bordered().title(format!("Tigrust - {} ", title));
+    f.render_widget(&block, area);
+    f.render_widget(
+        chart,
+        block.inner(center(area, Constraint::Fill(1), Constraint::Fill(1))),
+    );
+    f.render_widget(
+        Text::from(format!("{} | Switch Page: n", title)),
+        keybind_area,
+    );
+}
+
 fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
-   let [area] = Layout::horizontal([horizontal])
+    let [area] = Layout::horizontal([horizontal])
         .flex(ratatui::layout::Flex::Center)
         .areas(area);
     let [area] = Layout::vertical([vertical])
         .flex(ratatui::layout::Flex::Center)
         .areas(area);
     area
+}
+
+#[allow(unused)]
+fn debug_info(frame: &mut Frame) {
+    let area = frame.area();
+    frame.render_widget(
+        Text::from(format!("Area {}x{}", area.width, area.height)),
+        area,
+    );
 }
