@@ -2,6 +2,7 @@ use crate::meteo::MeteoAPI;
 use crate::ssh::SshTerminal;
 use crate::tibber_api::TibberAPI;
 use crate::{cache::HydratingCache, query::QueryResponse, tibber_api::Prices};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::Frame;
 use ratatui::text::Text;
 use ratatui::widgets::{Bar, BarChart, BarGroup, Clear};
@@ -45,7 +46,7 @@ impl App {
                         .map(|(i, &t)| {
                             Bar::default()
                                 .value(t as u64)
-                                .label(format!("B{}", i).into())
+                                .label(format!("{}", i).into())
                         })
                         .collect::<Vec<_>>()
                         .as_slice(),
@@ -53,9 +54,16 @@ impl App {
                 let chart = BarChart::default().data(bars);
                 terminal
                     .draw(|f: &mut Frame| {
-                        let area = f.area();
+                        let total_area = f.area();
+                        let bar_width = if total_area.width < 48 { 2 } else { 4 }; // TODO: adjust depending on space
+                        let bar_gap = 2;
+                        let chart_width: u16 = 24 * (bar_width + bar_gap);
+                        let chart = chart.bar_width(bar_width).bar_gap(bar_gap);
+                        
+                        let area = center(total_area, Constraint::Length(chart_width), Constraint::Percentage(95));
                         f.render_widget(Clear, area);
                         f.render_widget(&chart, area);
+                        f.render_widget(Text::from(format!("Weather | Counter {}", self.counter)), area);
                     })
                     .unwrap();
             }
@@ -79,13 +87,29 @@ impl App {
                 let chart = BarChart::default().data(bars);
                 terminal
                     .draw(|f: &mut Frame| {
-                        let area = f.area();
+                        // TODO: dedupe this
+                        let total_area = f.area();
+                        let bar_width = if total_area.width < 48 { 2 } else { 4 }; // TODO: adjust depending on space
+                        let bar_gap = 2;
+                        let chart_width: u16 = 24 * (bar_width + bar_gap);
+                        let chart = chart.bar_width(bar_width).bar_gap(bar_gap);
+                        let area = center(total_area, Constraint::Length(chart_width), Constraint::Percentage(95));
                         f.render_widget(Clear, area);
-                        f.render_widget(Text::from(format!("{}", self.counter)), area);
                         f.render_widget(chart, area);
+                        f.render_widget(Text::from(format!("Prices | Counter {}", self.counter)), area);
                     })
                     .unwrap();
             }
         }
     }
+}
+
+fn center(area: Rect, horizontal: Constraint, vertical: Constraint) -> Rect {
+   let [area] = Layout::horizontal([horizontal])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(area);
+    let [area] = Layout::vertical([vertical])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(area);
+    area
 }

@@ -131,7 +131,7 @@ impl AppServer {
             auth_rejection_time_initial: Some(std::time::Duration::from_secs(0)),
             keys: vec![
                 russh::keys::PrivateKey::read_openssh_file(&key_path)
-                    .expect("unable to open ssh key"),
+                    .expect("unable to find ssh key tigrust-localhost"),
             ],
             nodelay: true,
             ..Default::default() // part of russh::server
