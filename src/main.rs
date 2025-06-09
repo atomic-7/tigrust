@@ -60,7 +60,6 @@ async fn weather_info(
     cache: &State<Cache<QueryResponse>>,
     weather_api: &State<MeteoAPI>,
 ) -> Result<QueryResponse, String> {
-    println!("serving weather from cache!");
     match cache.get_or_hydrate(weather_api.inner()).await {
         Err(_) => Err(String::from("failed to hydrate weather")),
         Ok(weather_info) => Ok(weather_info.clone()),
