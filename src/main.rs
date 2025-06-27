@@ -188,13 +188,13 @@ async fn main() -> Result<(), rocket::Error> {
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     let tapi = TibberAPI::new(key);
     let prices = tapi.get_prices().await.unwrap();
-    let price_cache: Cache<Prices> = Cache::new(prices, 36000);
+    let price_cache: Cache<Prices> = Cache::new(prices, 3600);
 
     // TODO: consider rewriting this to use the new HydratingCache
     let query = build_query();
     let weather_api = MeteoAPI::new();
     let weather_info: QueryResponse = weather_api.do_query(&query).await.unwrap();
-    let weather_cache = Cache::new(weather_info, 36000);
+    let weather_cache = Cache::new(weather_info, 3600);
     drop(query);
 
     // hitting the api twice in a row seems scuffed
