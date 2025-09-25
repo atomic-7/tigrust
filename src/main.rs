@@ -8,12 +8,13 @@ use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
 // use rocket_include_dir::StaticFiles;
 use serde::Serialize;
-use tigrust::ssh::AppServer;
 use std::str::from_utf8;
 use tigrust::cache::Cache;
+use tigrust::guards::UserAgent;
 use tigrust::meteo::MeteoAPI;
 use tigrust::plot::prices::Graph;
 use tigrust::query::{QueryResponse, build_query};
+use tigrust::ssh::AppServer;
 use tigrust::tibber_api::{Days, Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
 
@@ -67,7 +68,12 @@ async fn weather_info(
 }
 
 #[get("/graph/<day>")]
-async fn graph(day: Days, tapi: &State<TibberAPI>, cache: &State<Cache<Prices>>) -> Template {
+async fn graph(
+    day: Days,
+    tapi: &State<TibberAPI>,
+    cache: &State<Cache<Prices>>,
+    user_agent: UserAgent,
+) -> Template {
     let now = chrono::Local::now();
     let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
     match cache.get_or_hydrate(tapi.inner()).await {
@@ -87,9 +93,13 @@ async fn graph(day: Days, tapi: &State<TibberAPI>, cache: &State<Cache<Prices>>)
             let graph = Graph::new(current_hour);
             let _ = graph.plot(Box::new(&mut buf), &todays);
             let plot = from_utf8(buf.as_slice()).unwrap().to_string();
+            let style = match user_agent {
+                UserAgent::Standard => "graph-styles.css",
+                UserAgent::Tolino => "tolino-graph-styles.css",
+            };
             Template::render(
                 "graph",
-                context! { graph: plot, refresh_rate: hour_delta.num_seconds()},
+                context! { style, graph: plot, refresh_rate: hour_delta.num_seconds()},
             )
         }
     }
@@ -170,15 +180,18 @@ async fn weather(cache: &State<Cache<QueryResponse>>, weather_api: &State<MeteoA
 }
 
 #[get("/")]
-async fn index() -> Template {
+async fn index(user_agent: UserAgent) -> Template {
     let now = chrono::Local::now();
     let tomorrow_delta = now.with_hour(0).unwrap() + Duration::days(1) - now;
+    let style = match user_agent {
+        UserAgent::Standard => "styles.css",
+        UserAgent::Tolino => "tolino-styles.css",
+    };
     Template::render(
         "index",
-        context! {refresh_rate: tomorrow_delta.num_seconds()},
+        context! {refresh_rate: tomorrow_delta.num_seconds(), style},
     )
 }
-
 
 // rocket::main launches the tokio runtime
 #[rocket::main]
@@ -227,7 +240,7 @@ async fn main() -> Result<(), rocket::Error> {
         ssh_err = ssh_server.run() => {
             eprintln!("ssh server stopped: {:?}", ssh_err);
         }
-        
+
     };
     Ok(())
 }
