@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use serde::Serialize;
 use std::fmt::{self, Display};
 use std::result::Result;
 use std::sync::{RwLock, RwLockReadGuard};
@@ -11,7 +12,7 @@ pub struct Cache<T> {
     last_update: RwLock<Instant>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Error {
     CacheExpired,
     HydrateError,

@@ -9,11 +9,11 @@ use rocket_dyn_templates::{Template, context};
 // use rocket_include_dir::StaticFiles;
 use serde::Serialize;
 use std::str::from_utf8;
-use tigrust::cache::{Cache, HydratingCache};
+use tigrust::cache::HydratingCache;
 use tigrust::guards::UserAgent;
 use tigrust::meteo::MeteoAPI;
 use tigrust::plot::prices::Graph;
-use tigrust::query::{QueryResponse, build_query};
+use tigrust::query::QueryResponse;
 use tigrust::ssh::AppServer;
 use tigrust::tibber_api::{Days, Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
@@ -59,15 +59,6 @@ async fn prices(
 #[post("/update/prices")]
 async fn update_prices(cache: &State<HydratingCache<Prices, TibberAPI>>) -> Option<&'static str> {
     cache.hydrate().await.ok().map(|_| "cache hydrated!\n")
-}
-async fn weather_info(
-    cache: &State<Cache<QueryResponse>>,
-    weather_api: &State<MeteoAPI>,
-) -> Result<QueryResponse, String> {
-    match cache.get_or_hydrate(weather_api.inner()).await {
-        Err(_) => Err(String::from("failed to hydrate weather")),
-        Ok(weather_info) => Ok(weather_info.clone()),
-    }
 }
 
 #[get("/graph/<day>")]
@@ -134,12 +125,10 @@ struct FutureDay {
 }
 
 #[get("/weather")]
-async fn weather(cache: &State<Cache<QueryResponse>>, weather_api: &State<MeteoAPI>) -> Template {
-    let result = match weather_info(cache, weather_api).await {
+async fn weather(cache: &State<HydratingCache<QueryResponse, MeteoAPI>>) -> Template {
+    let result = match cache.get().await {
         Ok(r) => r,
-        Err(err) => {
-            return Template::render("errmsg", context! { error_msg: err });
-        }
+        Err(err) => return Template::render("errmsg", context! { error_msg: err }),
     };
     let temperatures_avg: Vec<f32> = result.hourly.temperature_2m[0..24]
         .chunks(3)
@@ -204,14 +193,13 @@ async fn main() -> Result<(), rocket::Error> {
     let tapi = TibberAPI::new(key);
     let price_cache: HydratingCache<Prices, TibberAPI> = HydratingCache::new(tapi, 3600)
         .await
-        .expect("api should be reachable when the server starts");
+        .expect("tibber api should be reachable when the server starts");
 
     // TODO: consider rewriting this to use the new HydratingCache
-    let query = build_query();
     let weather_api = MeteoAPI::new();
-    let weather_info: QueryResponse = weather_api.do_query(&query).await.unwrap();
-    let weather_cache = Cache::new(weather_info, 3600);
-    drop(query);
+    let weather_cache = HydratingCache::new(weather_api, 3600)
+        .await
+        .expect("weather api should be reachable when the server starts");
 
     // hitting the api twice in a row seems scuffed
     // should maybe implement clone for Cache and HydratingCache
@@ -226,7 +214,6 @@ async fn main() -> Result<(), rocket::Error> {
         .mount("/api/", routes![prices, update_prices])
         // .manage(tapi)
         .manage(price_cache)
-        .manage(weather_api)
         .manage(weather_cache)
         // .mount("/static", StaticFiles::from(&ASSET_DIR));
         .mount("/static", FileServer::from("static"));
