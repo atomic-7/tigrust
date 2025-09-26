@@ -73,7 +73,7 @@ impl<T: Clone> Cache<T> {
             }
         }
     }
-    pub fn debug_expire_cache(&mut self) {
+    pub fn expire_cache(&self) {
         let mut time_guard = self.last_update.write().unwrap();
         *time_guard = time_guard.checked_sub(self.timeout).unwrap();
     }
@@ -102,6 +102,13 @@ impl<T: Clone, H: Hydrator<T>> HydratingCache<T, H> {
     // retrieves the cached value or tries rehydrating it
     pub async fn get(&self) -> Result<RwLockReadGuard<'_, T>, Error> {
         self.cache.get_or_hydrate(&self.hydrator).await
+    }
+    pub async fn hydrate(&self) -> Result<(), Error> {
+        self.cache.expire_cache();
+        self.cache
+            .get_or_hydrate(&self.hydrator)
+            .await
+            .map(|_cached| ())
     }
 }
 

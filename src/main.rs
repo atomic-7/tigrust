@@ -1,15 +1,15 @@
 use chrono::{self, Duration, Timelike};
 use dotenv;
 // use include_dir::{Dir, include_dir};
-use rocket::State;
 use rocket::fs::FileServer;
 use rocket::serde::json::Json;
+use rocket::{State, post};
 use rocket::{get, routes};
 use rocket_dyn_templates::{Template, context};
 // use rocket_include_dir::StaticFiles;
 use serde::Serialize;
 use std::str::from_utf8;
-use tigrust::cache::Cache;
+use tigrust::cache::{Cache, HydratingCache};
 use tigrust::guards::UserAgent;
 use tigrust::meteo::MeteoAPI;
 use tigrust::plot::prices::Graph;
@@ -19,11 +19,11 @@ use tigrust::tibber_api::{Days, Prices, TibberAPI};
 use tigrust::weathercodes::WeatherCodes;
 
 #[get("/current_price", format = "text/html")]
-async fn current_price(tapi: &State<TibberAPI>, cache: &State<Cache<Prices>>) -> Template {
+async fn current_price(cache: &State<HydratingCache<Prices, TibberAPI>>) -> Template {
     // TOOD: See if current_price template and current_time template could just be one
     let now = chrono::Local::now();
     let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
-    match cache.get_or_hydrate(tapi.inner()).await {
+    match cache.get().await {
         Err(e) => Template::render(
             "error_msg",
             context! {error_msg: format!("hydration error: {}", e)},
@@ -42,10 +42,9 @@ async fn current_price(tapi: &State<TibberAPI>, cache: &State<Cache<Prices>>) ->
 #[get("/prices/<day>", format = "application/json")]
 async fn prices(
     day: Days,
-    tapi: &State<TibberAPI>,
-    cache: &State<Cache<Prices>>,
+    cache: &State<HydratingCache<Prices, TibberAPI>>,
 ) -> Option<Json<Vec<f32>>> {
-    match cache.get_or_hydrate(tapi.inner()).await {
+    match cache.get().await {
         Err(_) => None,
         Ok(prices) => {
             let Some(daily) = prices.get(day) else {
@@ -57,6 +56,10 @@ async fn prices(
     }
 }
 
+#[post("/update/prices")]
+async fn update_prices(cache: &State<HydratingCache<Prices, TibberAPI>>) -> Option<&'static str> {
+    cache.hydrate().await.ok().map(|_| "cache hydrated!\n")
+}
 async fn weather_info(
     cache: &State<Cache<QueryResponse>>,
     weather_api: &State<MeteoAPI>,
@@ -70,13 +73,12 @@ async fn weather_info(
 #[get("/graph/<day>")]
 async fn graph(
     day: Days,
-    tapi: &State<TibberAPI>,
-    cache: &State<Cache<Prices>>,
+    cache: &State<HydratingCache<Prices, TibberAPI>>,
     user_agent: UserAgent,
 ) -> Template {
     let now = chrono::Local::now();
     let hour_delta = now.with_minute(0).unwrap().with_second(1).unwrap() + Duration::hours(1) - now;
-    match cache.get_or_hydrate(tapi.inner()).await {
+    match cache.get().await {
         Err(e) => Template::render(
             "error_message",
             context! {error_msg: format!("failed to hydrate {}", e)},
@@ -200,8 +202,9 @@ async fn main() -> Result<(), rocket::Error> {
     let _ = dotenv::dotenv();
     let key = dotenv::var("TOKEN").expect("TOKEN needs to be placed in .env");
     let tapi = TibberAPI::new(key);
-    let prices = tapi.get_prices().await.unwrap();
-    let price_cache: Cache<Prices> = Cache::new(prices, 3600);
+    let price_cache: HydratingCache<Prices, TibberAPI> = HydratingCache::new(tapi, 3600)
+        .await
+        .expect("api should be reachable when the server starts");
 
     // TODO: consider rewriting this to use the new HydratingCache
     let query = build_query();
@@ -220,8 +223,8 @@ async fn main() -> Result<(), rocket::Error> {
             "/",
             routes![index, current_time, current_price, graph, weather],
         )
-        .mount("/api/", routes![prices])
-        .manage(tapi)
+        .mount("/api/", routes![prices, update_prices])
+        // .manage(tapi)
         .manage(price_cache)
         .manage(weather_api)
         .manage(weather_cache)
