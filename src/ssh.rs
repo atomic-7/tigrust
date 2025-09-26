@@ -101,7 +101,7 @@ impl AppServer {
         }
     }
 
-    pub async fn run(&mut self) -> Result<(), std::io::Error> {
+    pub async fn run(&mut self, port: u16) -> Result<(), std::io::Error> {
         let clients = self.clients.clone();
         let weather_cache = self.weather_cache.clone();
         let price_cache = self.price_cache.clone();
@@ -137,7 +137,7 @@ impl AppServer {
             ..Default::default() // part of russh::server
         };
 
-        self.run_on_address(Arc::new(config), ("0.0.0.0", 2222))
+        self.run_on_address(Arc::new(config), ("0.0.0.0", port))
             .await?;
 
         Ok(())

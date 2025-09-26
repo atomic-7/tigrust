@@ -9,6 +9,7 @@ async fn main() -> Result<()> {
 
     println!("running on 0.0.0.0:2222");
     let mut server = AppServer::new().await;
-    server.run().await.expect("failed running server");
+    let port: u16 = 2222;
+    server.run(port).await.expect("failed running server");
     Ok(())
 }

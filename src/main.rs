@@ -203,6 +203,10 @@ async fn main() -> Result<(), rocket::Error> {
 
     // hitting the api twice in a row seems scuffed
     // should maybe implement clone for Cache and HydratingCache
+    let ssh_port: u16 = dotenv::var("SSH_PORT")
+        .expect("SSH_PORT needs to be set in .env")
+        .parse::<u16>()
+        .expect("SSH_PORT needs to be a valid uint16");
     let mut ssh_server = AppServer::new().await;
 
     let rocket = rocket::build()
@@ -227,7 +231,7 @@ async fn main() -> Result<(), rocket::Error> {
                 }
             }
         }
-        ssh_err = ssh_server.run() => {
+        ssh_err = ssh_server.run(ssh_port) => {
             eprintln!("ssh server stopped: {:?}", ssh_err);
         }
 
