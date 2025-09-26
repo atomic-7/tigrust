@@ -2,6 +2,7 @@ use rocket::http::Status;
 use rocket::request::{self, FromRequest, Outcome, Request};
 #[derive(Debug)]
 pub enum UserAgent {
+    Curl,
     Standard,
     Tolino,
 }
@@ -20,12 +21,13 @@ impl<'r> FromRequest<'r> for UserAgent {
         let agent = req.headers().get_one("user-agent");
         dbg!(&agent);
         if let Some(ag) = agent {
-            if ag.contains("Firefox") {
-                Outcome::Success(Self::Standard)
+            if ag.contains("tolino") {
+                Outcome::Success(Self::Tolino)
             } else {
-                Outcome::Error((Status::BadRequest, UserAgentError::UnknownUserAgent))
+                Outcome::Success(Self::Standard)
             }
         } else {
+            // maybe just serve standard for clients without user agent
             Outcome::Error((Status::BadRequest, UserAgentError::NoUserAgent))
         }
     }

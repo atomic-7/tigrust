@@ -87,6 +87,7 @@ async fn graph(
             let _ = graph.plot(Box::new(&mut buf), &todays);
             let plot = from_utf8(buf.as_slice()).unwrap().to_string();
             let style = match user_agent {
+                UserAgent::Curl => "graph-styles.css",
                 UserAgent::Standard => "graph-styles.css",
                 UserAgent::Tolino => "tolino-graph-styles.css",
             };
@@ -175,6 +176,7 @@ async fn index(user_agent: UserAgent) -> Template {
     let now = chrono::Local::now();
     let tomorrow_delta = now.with_hour(0).unwrap() + Duration::days(1) - now;
     let style = match user_agent {
+        UserAgent::Curl => "styles.css",
         UserAgent::Standard => "styles.css",
         UserAgent::Tolino => "tolino-styles.css",
     };
