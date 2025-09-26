@@ -8,26 +8,28 @@
 		<meta http-equiv="refresh" content="{{ refresh_rate }}">
 	</head>
 	<body>
-		<div class="infobar">
-			<div class="infobar-item">
-				<iframe src="/time" scrolling="no" frameborder="0" name="CurrentTime"></iframe>
-			</div>
-			<div class="infobar-item">
-				<iframe src="/current_price" scrolling="no" frameborder="0" name="CurrentPrice"></iframe>
-			</div>
-			<div class="infobar-item">
-				<div class="switcher-bar">
-					<form name="content-select" target="SiteContent">
-						<button formaction="/graph/today" class="switcher-item">Heute</button>
-						<button formaction="/graph/tomorrow" class="switcher-item">Morgen</button>
-						<button formaction="/weather" class="switcher-item">Wetter</button>
-					</form>
-				</div>
-			</div>
-		</div>
-		<hr />
-		<div class="site-content">
-			<iframe src="/graph/today" id="display" scrolling="no" frameborder="0" name="SiteContent"></iframe>
+		<div class="rotate">
+    		<div class="infobar">
+    			<div class="infobar-item">
+    				<iframe src="/time" scrolling="no" frameborder="0" name="CurrentTime"></iframe>
+    			</div>
+    			<div class="infobar-item">
+    				<iframe src="/current_price" scrolling="no" frameborder="0" name="CurrentPrice"></iframe>
+    			</div>
+    			<div class="infobar-item">
+    				<div class="switcher-bar">
+    					<form name="content-select" target="SiteContent">
+    						<button formaction="/graph/today" class="switcher-item">Heute</button>
+    						<button formaction="/graph/tomorrow" class="switcher-item">Morgen</button>
+    						<button formaction="/weather" class="switcher-item">Wetter</button>
+    					</form>
+    				</div>
+    			</div>
+    		</div>
+    		<hr />
+    		<div class="site-content">
+    			<iframe src="/graph/today" id="display" scrolling="no" frameborder="0" name="SiteContent"></iframe>
+    		</div>
 		</div>
 	</body>
 </html>

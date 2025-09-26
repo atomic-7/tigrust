@@ -178,7 +178,10 @@ async fn index(user_agent: UserAgent) -> Template {
     let style = match user_agent {
         UserAgent::Curl => "styles.css",
         UserAgent::Standard => "styles.css",
-        UserAgent::Tolino => "tolino-styles.css",
+        UserAgent::Tolino => {
+            println!("tolino style!");
+            "tolino-styles.css"
+        }
     };
     Template::render(
         "index",
@@ -218,7 +221,6 @@ async fn main() -> Result<(), rocket::Error> {
             routes![index, current_time, current_price, graph, weather],
         )
         .mount("/api/", routes![prices, update_prices])
-        // .manage(tapi)
         .manage(price_cache)
         .manage(weather_cache)
         // .mount("/static", StaticFiles::from(&ASSET_DIR));
