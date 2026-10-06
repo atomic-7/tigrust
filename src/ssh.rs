@@ -112,8 +112,6 @@ impl AppServer {
 
                 // TODO: see if this makes sense
                 for (_, (terminal, app)) in clients.lock().await.iter_mut() {
-                    app.counter += 1;
-
                     // render the app here like normal
                     app.render(terminal, weather_cache.clone(), price_cache.clone())
                         .await;

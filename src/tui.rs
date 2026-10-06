@@ -13,7 +13,6 @@ pub enum Page {
     Price,
 }
 pub struct App {
-    pub counter: usize,
     pub page: Page,
 }
 
@@ -21,10 +20,7 @@ impl App {
     pub fn new() -> App {
         // TODO: fetch weather data and price data here
         // TODO: later setup link between server data and ssh tui
-        Self {
-            counter: 0,
-            page: Page::Weather,
-        }
+        Self { page: Page::Price }
     }
 
     pub async fn render(
