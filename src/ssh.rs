@@ -8,6 +8,10 @@ use crate::query::QueryResponse;
 use crate::tibber_api::{Prices, TibberAPI};
 use crate::tui::{App, Page};
 use color_eyre::Result;
+// use ratatui::backend::Backend;
+use ratatui::crossterm::ExecutableCommand;
+// use ratatui::crossterm::cursor::{RestorePosition, Show};
+use ratatui::crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::layout::Rect;
 use ratatui::prelude::CrosstermBackend;
 use ratatui::{Terminal, TerminalOptions, Viewport};
@@ -142,13 +146,31 @@ impl AppServer {
     }
 }
 
+fn teardown(_handle: &mut Terminal<CrosstermBackend<TerminalHandle>>) -> anyhow::Result<()> {
+    // let backend = handle.backend_mut();
+    // backend.clear()?;
+    // backend.execute(LeaveAlternateScreen)?;
+    // backend.execute(RestorePosition)?;
+    // backend.execute(Show)?;
+    // handle.flush()?;
+    Ok(())
+}
+
 impl Drop for AppServer {
     fn drop(&mut self) {
         let id = self.id;
         let clients = self.clients.clone();
         tokio::spawn(async move {
             let mut clients = clients.lock().await;
+            if let Some((handle, _)) = clients.get_mut(&id) {
+                dbg!("running drop logic for {}", id);
+                if let Err(e) = teardown(handle) {
+                    eprintln!("Error during teardown: {}", e);
+                }
+            }
+            // the client should already have been removed from the pool
             clients.remove(&id);
+            // maybe some cleanup is missing here and is leaving the client messed up?
         });
     }
 }
@@ -172,7 +194,10 @@ impl Handler for AppServer {
         session: &mut Session,
     ) -> Result<bool, Self::Error> {
         let terminal_handle = TerminalHandle::start(session.handle(), channel.id()).await;
-        let backend = CrosstermBackend::new(terminal_handle);
+        let mut backend = CrosstermBackend::new(terminal_handle);
+        backend.execute(EnterAlternateScreen)?;
+        // might make sense to store the original dimensions to restore them afterwards with
+        // crossterm execute on the io handle
         let options = TerminalOptions {
             viewport: Viewport::Fixed(Rect::default()),
         };
@@ -208,8 +233,25 @@ impl Handler for AppServer {
     ) -> Result<(), Self::Error> {
         match data {
             b"q" => {
-                self.clients.lock().await.remove(&self.id);
-                session.close(channel)?;
+                let mut clients = self.clients.lock().await;
+                if let Some((handle, _)) = clients.get_mut(&self.id) {
+                    if let Err(e) = teardown(handle) {
+                        eprintln!("Teardown error during q exit: {}", e);
+                    }
+                }
+                clients.remove(&self.id).unwrap();
+                // closing with q is also leaving the terminal in a messed up state
+                // session.exit_status_request(channel, 0)?;
+                // session.eof(channel)?;
+                // if let Err(e) =
+                //     session.disconnect(russh::Disconnect::ByApplication, "user quit", "en_us")
+                // {
+                //     eprintln!("Disconnect error: {}", e);
+                // };
+                if let Err(e) = session.close(channel) {
+                    eprintln!("Close error: {}", e);
+                    return Err(anyhow::anyhow!(e));
+                }
             }
             b"n" => {
                 let mut clients = self.clients.lock().await;
