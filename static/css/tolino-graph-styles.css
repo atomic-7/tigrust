@@ -1,14 +1,16 @@
 body {
-	margin: 0;
-	padding: 0;
-	display: flex;
-	justify-content: center;
-	align-items: start;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: start;
 }
 
 svg {
-	margin: 0;
-	padding: 0;
-	flex: 1 1 auto;
-	text-anchor: middle;
+    margin: 0;
+    padding: 0;
+    flex: 1 1 auto;
+    fill: black;
+    stroke: black;
+    text-anchor: middle;
 }

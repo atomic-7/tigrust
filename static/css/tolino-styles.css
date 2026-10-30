@@ -54,7 +54,8 @@ hr {
     flex-grow: 1;
     justify-content: center;
     align-items: center;
-    width: 100%;
+    /*width: 100%;*/
+    width: 33%;
     height: 100%;
 }
 
